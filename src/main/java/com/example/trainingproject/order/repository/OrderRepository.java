@@ -1,0 +1,23 @@
+package com.example.trainingproject.order.repository;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.stereotype.Repository;
+
+import com.example.trainingproject.order.entity.Order;
+
+@Repository
+@SuppressWarnings("unused") // Spring Data generates implementations for repository methods.
+public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
+
+    @Query("select o from Order o left join fetch o.items where o.id = :id")
+    Optional<Order> findByIdWithItems(UUID id);
+
+    Optional<Order> findByIdempotencyKeyAndUserId(String idempotencyKey, UUID userId);
+
+    Optional<Order> findByStripePaymentIntentId(String stripePaymentIntentId);
+}

@@ -1,0 +1,268 @@
+package com.example.trainingproject.cart.service;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.jspecify.annotations.Nullable;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.example.trainingproject.cart.api.CartCheckoutApi;
+import com.example.trainingproject.cart.api.dto.AddCartItemRequest;
+import com.example.trainingproject.cart.api.dto.CartSnapshot;
+import com.example.trainingproject.cart.converter.ShoppingCartDtoConverter;
+import com.example.trainingproject.cart.entity.ShoppingCart;
+import com.example.trainingproject.cart.entity.ShoppingCartItem;
+import com.example.trainingproject.cart.exception.CartProductNotFoundException;
+import com.example.trainingproject.cart.exception.InvalidCartItemRequestException;
+import com.example.trainingproject.cart.exception.InvalidItemProductQuantityException;
+import com.example.trainingproject.cart.exception.ShoppingCartItemNotFoundException;
+import com.example.trainingproject.cart.exception.ShoppingCartNotFoundException;
+import com.example.trainingproject.cart.repository.ShoppingCartItemRepository;
+import com.example.trainingproject.cart.repository.ShoppingCartRepository;
+import com.example.trainingproject.openapi.dto.ShoppingCartDto;
+import com.example.trainingproject.product.api.ProductCatalogApi;
+import com.example.trainingproject.product.api.dto.ProductSnapshot;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ShoppingCartService implements CartCheckoutApi {
+
+    private static final int MAX_ITEM_PRODUCT_QUANTITY = 99;
+
+    private final ShoppingCartRepository shoppingCartRepository;
+    private final ShoppingCartItemRepository shoppingCartItemRepository;
+    private final ProductCatalogApi productCatalogApi;
+
+    @Retryable(retryFor = DataIntegrityViolationException.class, backoff = @Backoff(delay = 100))
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+    public ShoppingCartDto getByUserId(final UUID userId) {
+        return toCartDto(getOrCreateCart(userId));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, readOnly = true)
+    public CartSnapshot getByUserIdOrThrow(final UUID userId) {
+        return shoppingCartRepository
+                .findShoppingCartByUserId(userId)
+                .map(this::toCartSnapshot)
+                .orElseThrow(() -> new ShoppingCartNotFoundException(userId));
+    }
+
+    @Override
+    @Retryable(retryFor = DataIntegrityViolationException.class, backoff = @Backoff(delay = 100))
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+    public CartSnapshot addItems(final UUID userId, final Set<AddCartItemRequest> itemsToAdd) {
+        ShoppingCart shoppingCart = addItemsAndSave(userId, itemsToAdd);
+        return toCartSnapshot(shoppingCart);
+    }
+
+    @Retryable(retryFor = DataIntegrityViolationException.class, backoff = @Backoff(delay = 100))
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+    public ShoppingCartDto addItemsToCart(final UUID userId, final Set<AddCartItemRequest> itemsToAdd) {
+        ShoppingCart shoppingCart = addItemsAndSave(userId, itemsToAdd);
+        return toCartDto(shoppingCart);
+    }
+
+    private ShoppingCart addItemsAndSave(final UUID userId, final Set<AddCartItemRequest> itemsToAdd) {
+        validateAddCartItemRequests(itemsToAdd);
+        ShoppingCart shoppingCart = getOrCreateCart(userId);
+        Map<UUID, Integer> productsWithQuantity = itemsToAdd.stream()
+                .collect(Collectors.toMap(
+                        AddCartItemRequest::productId, AddCartItemRequest::productQuantity, Integer::sum));
+        validateProductsExist(productsWithQuantity.keySet());
+        mergeIntoCart(shoppingCart, productsWithQuantity);
+        return shoppingCartRepository.saveAndFlush(shoppingCart);
+    }
+
+    @Retryable(retryFor = OptimisticLockingFailureException.class, backoff = @Backoff(delay = 100))
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+    public ShoppingCartDto updateItemQuantity(
+            final UUID shoppingCartItemId, final UUID userId, final int productQuantityChange) {
+        ShoppingCartItem item = shoppingCartItemRepository
+                .findByIdAndShoppingCartUserId(shoppingCartItemId, userId)
+                .orElseThrow(() -> new ShoppingCartItemNotFoundException(shoppingCartItemId));
+
+        validateQuantityChange(shoppingCartItemId, productQuantityChange, item);
+
+        item.setProductQuantity(item.getProductQuantity() + productQuantityChange);
+        shoppingCartItemRepository.save(item);
+        return getByUserId(userId);
+    }
+
+    @Retryable(retryFor = DataIntegrityViolationException.class, backoff = @Backoff(delay = 100))
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
+    public ShoppingCartDto deleteItems(final List<UUID> itemIds, final UUID userId) {
+        List<UUID> validatedItemIds = validateAndCopyDeleteItemIds(itemIds);
+        shoppingCartItemRepository.deleteByIdInAndUserId(validatedItemIds, userId);
+        log.info("cart.items.deleted: count={}, userId={}", validatedItemIds.size(), userId);
+        return getByUserId(userId);
+    }
+
+    private ShoppingCart getOrCreateCart(UUID userId) {
+        return shoppingCartRepository.findShoppingCartByUserId(userId).orElseGet(() -> createNewShoppingCart(userId));
+    }
+
+    private ShoppingCart createNewShoppingCart(UUID userId) {
+        ShoppingCart shoppingCart = ShoppingCart.builder().userId(userId).build();
+        ShoppingCart savedCart = shoppingCartRepository.saveAndFlush(shoppingCart);
+        log.info("cart.created: userId={}", userId);
+        return savedCart;
+    }
+
+    private ShoppingCartDto toCartDto(ShoppingCart shoppingCart) {
+        Map<UUID, ProductSnapshot> productsById = loadProductsById(shoppingCart);
+        return ShoppingCartDtoConverter.toDto(shoppingCart, productsById);
+    }
+
+    private CartSnapshot toCartSnapshot(ShoppingCart shoppingCart) {
+        Map<UUID, ProductSnapshot> productsById = loadProductsById(shoppingCart);
+        return ShoppingCartDtoConverter.toSnapshot(shoppingCart, productsById);
+    }
+
+    private Map<UUID, ProductSnapshot> loadProductsById(ShoppingCart shoppingCart) {
+        List<UUID> productIds = shoppingCart.getItems().stream()
+                .map(ShoppingCartItem::getProductId)
+                .distinct()
+                .toList();
+        if (productIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, ProductSnapshot> productsById = productCatalogApi.getProductsByIds(productIds).stream()
+                .collect(Collectors.toMap(ProductSnapshot::id, Function.identity()));
+        List<UUID> missingProductIds = productIds.stream()
+                .filter(productId -> !productsById.containsKey(productId))
+                .toList();
+        if (!missingProductIds.isEmpty()) {
+            throw new CartProductNotFoundException(missingProductIds);
+        }
+        return productsById;
+    }
+
+    private void mergeIntoCart(ShoppingCart cart, Map<UUID, Integer> productsWithQuantity) {
+        increaseExistingItemQuantities(cart, productsWithQuantity);
+        cart.getItems().addAll(createNewItems(productsWithQuantity, cart));
+    }
+
+    private void validateProductsExist(Set<UUID> productIds) {
+        Set<UUID> existingProductIds = productCatalogApi.findExistingProductIds(productIds);
+        List<UUID> missingProductIds = productIds.stream()
+                .filter(productId -> !existingProductIds.contains(productId))
+                .toList();
+        if (!missingProductIds.isEmpty()) {
+            throw new CartProductNotFoundException(missingProductIds);
+        }
+    }
+
+    private static void increaseExistingItemQuantities(
+            ShoppingCart shoppingCart, Map<UUID, Integer> productsWithQuantity) {
+        shoppingCart.getItems().forEach(item -> {
+            Integer quantityToAdd = productsWithQuantity.get(item.getProductId());
+            if (quantityToAdd != null) {
+                int newQuantity = item.getProductQuantity() + quantityToAdd;
+                validateProductQuantity(newQuantity);
+                item.setProductQuantity(newQuantity);
+            }
+        });
+    }
+
+    private List<ShoppingCartItem> createNewItems(Map<UUID, Integer> productsWithQuantity, ShoppingCart shoppingCart) {
+        Set<UUID> existingProductIds = shoppingCart.getItems().stream()
+                .map(ShoppingCartItem::getProductId)
+                .collect(Collectors.toSet());
+
+        Set<UUID> newProductIds = productsWithQuantity.keySet().stream()
+                .filter(productId -> !existingProductIds.contains(productId))
+                .collect(Collectors.toSet());
+
+        if (newProductIds.isEmpty()) {
+            return List.of();
+        }
+
+        return newProductIds.stream()
+                .map(productId -> {
+                    int productQuantity = Objects.requireNonNull(
+                            productsWithQuantity.get(productId),
+                            "Product quantity not found for productId: " + productId);
+                    validateProductQuantity(productQuantity);
+                    return ShoppingCartItem.builder()
+                            .shoppingCart(shoppingCart)
+                            .productId(productId)
+                            .productQuantity(productQuantity)
+                            .build();
+                })
+                .toList();
+    }
+
+    private void validateQuantityChange(
+            final UUID shoppingCartItemId, int productQuantityChange, ShoppingCartItem item) {
+        if (productQuantityChange == 0) {
+            log.debug("cart.item.quantity.zero_change: itemId={}", shoppingCartItemId);
+            throw new InvalidItemProductQuantityException("Product quantity change must not be zero.");
+        }
+        int newQuantity = item.getProductQuantity() + productQuantityChange;
+        validateProductQuantity(newQuantity);
+    }
+
+    private static void validateProductQuantity(int productQuantity) {
+        if (productQuantity < 1 || productQuantity > MAX_ITEM_PRODUCT_QUANTITY) {
+            throw new InvalidItemProductQuantityException(productQuantity, MAX_ITEM_PRODUCT_QUANTITY);
+        }
+    }
+
+    private static void validateAddCartItemRequests(
+            @Nullable Collection<? extends @Nullable AddCartItemRequest> itemsToAdd) {
+        if (itemsToAdd == null) {
+            throw new InvalidCartItemRequestException("Cart items to add must not be null.");
+        }
+        if (itemsToAdd.isEmpty()) {
+            throw new InvalidCartItemRequestException("Cart items to add must not be empty.");
+        }
+        for (@Nullable AddCartItemRequest item : itemsToAdd) {
+            if (item == null) {
+                throw new InvalidCartItemRequestException("Cart items to add must not contain null items.");
+            }
+            validateProductQuantity(item.productQuantity());
+        }
+    }
+
+    private static List<UUID> validateAndCopyDeleteItemIds(@Nullable List<? extends @Nullable UUID> itemIds) {
+        if (itemIds == null) {
+            throw new InvalidCartItemRequestException("Cart item ids to delete must not be null.");
+        }
+        if (itemIds.isEmpty()) {
+            throw new InvalidCartItemRequestException("Cart item ids to delete must not be empty.");
+        }
+        List<UUID> validatedItemIds = new ArrayList<>(itemIds.size());
+        for (@Nullable UUID itemId : itemIds) {
+            if (itemId == null) {
+                throw new InvalidCartItemRequestException("Cart item ids to delete must not contain null values.");
+            }
+            validatedItemIds.add(itemId);
+        }
+        return List.copyOf(validatedItemIds);
+    }
+
+    @Override
+    @Transactional
+    public void deleteCartForUser(final UUID userId) {
+        shoppingCartRepository.deleteByUserId(userId);
+    }
+}

@@ -1,0 +1,95 @@
+# Database Changelog - Version 2.0
+
+databaseChangeLog:
+  - include:
+      file: db/changelog/version-2.0/add-ai-summary-to-product-reviews.sql
+  - include:
+      file: db/changelog/version-2.0/add-ai-summary-to-product.sql
+  - include:
+      file: db/changelog/version-2.0/31.05.2026.part1.drop-product-review-ai-summary.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/add-product-image-table.sql
+  - include:
+      file: db/changelog/version-2.0/drop-shopping-cart-denormalized-counters.sql
+  - include:
+      file: db/changelog/version-2.0/add-auth-sessions-table.sql
+  - include:
+      file: db/changelog/version-2.0/add-auth-sessions-previous-token-hash.sql
+  - include:
+      file: db/changelog/version-2.0/add-oauth-user-column.sql
+  - include:
+      file: db/changelog/version-2.0/create-oauth-identities-table.sql
+  - include:
+      file: db/changelog/version-2.0/expand-auth-email-columns.sql
+  - include:
+      file: db/changelog/version-2.0/add-shopping-cart-user-id-unique-constraint.sql
+  - include:
+      file: db/changelog/version-2.0/add-shopping-cart-item-unique-constraint.sql
+  - include:
+      file: db/changelog/version-2.0/add-cart-item-foreign-keys.sql
+  - include:
+      file: db/changelog/version-2.0/add-shopping-cart-item-version-default.sql
+  - include:
+      file: db/changelog/version-2.0/add-shopping-cart-item-quantity-constraint.sql
+  - include:
+      file: db/changelog/version-2.0/add-product-review-likes-unique-constraint.sql
+  - include:
+      file: db/changelog/version-2.0/add-favorite-list-user-id-unique-constraint.sql
+  - include:
+      file: db/changelog/version-2.0/add-favorite-item-unique-constraint.sql
+  - include:
+      file: db/changelog/version-2.0/add-file-metadata-related-object-id-index.sql
+  - include:
+      file: db/changelog/version-2.0/expand-profile-address-columns.sql
+  - include:
+      file: db/changelog/version-2.0/remove-user-address-delete-cascade.sql
+  - include:
+      file: db/changelog/version-2.0/add-user-granted-authority-user-fk.sql
+  - include:
+      file: db/changelog/version-2.0/30.05.2026.part1.harden-product-catalog-constraints.sql
+      errorIfMissing: true
+
+  # ========== ORDER MODULE ENHANCEMENTS ==========
+  - include:
+      file: db/changelog/version-2.0/03.05.2026.part1.add-order-indexes-and-fk.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/03.05.2026.part2.add-order-lifecycle-columns.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/03.05.2026.part3.create-order-status-history-table.sql
+      errorIfMissing: true
+
+  # ========== STRIPE PAYMENT INTEGRATION ==========
+  - include:
+      file: db/changelog/version-2.0/04.05.2026.part1.create-payments-table.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/04.05.2026.part2.create-stripe-webhook-events-table.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/add-payment-order-business-constraints.sql
+      errorIfMissing: true
+
+  # ========== KAFKA PRODUCT REVIEW INTEGRATION ==========
+  - include:
+      file: db/changelog/version-2.0/24.05.2026.part1.create-kafka-outbox-inbox-tables.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/29.05.2026.part1.add-outbox-event-type-poll-index.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/29.05.2026.part2.add-inbox-consumer-event-type-poll-index.sql
+      errorIfMissing: true
+
+  # ========== SUPPORT CHAT ==========
+  - include:
+      file: db/changelog/version-2.0/08.06.2026.part1.create-support-chat-tables.sql
+      errorIfMissing: true
+  - include:
+      file: db/changelog/version-2.0/09.06.2026.part1.add-support-chat-operator-inspection-marker.sql
+
+  - include:
+      file: db/changelog/version-2.0/26.06.2026.part1.create-user-avatar-upload-table.sql
+      errorIfMissing: true

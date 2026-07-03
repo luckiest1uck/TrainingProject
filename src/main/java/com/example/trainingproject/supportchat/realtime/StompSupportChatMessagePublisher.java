@@ -1,0 +1,70 @@
+package com.example.trainingproject.supportchat.realtime;
+
+import static org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive;
+
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
+import com.example.trainingproject.openapi.dto.SupportChatMessageDto;
+import com.example.trainingproject.supportchat.converter.SupportChatDtoConverter;
+import com.example.trainingproject.supportchat.entity.SupportConversationEntity;
+import com.example.trainingproject.supportchat.entity.SupportMessageEntity;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class StompSupportChatMessagePublisher implements SupportChatMessagePublisher {
+
+    private final SimpMessagingTemplate messagingTemplate;
+    private final SupportChatDtoConverter dtoConverter;
+    private final SentryHandledExceptionReporter sentryHandledExceptionReporter;
+
+    @Override
+    public void publishOwnerReply(SupportConversationEntity conversation, SupportMessageEntity message) {
+        String destination = SupportChatWebSocketDestinations.conversationMessages(conversation.getId());
+        SupportChatMessageDto payload = dtoConverter.toMessageDto(message);
+
+        if (!isActualTransactionActive()) {
+            send(destination, payload, conversation, message);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                send(destination, payload, conversation, message);
+            }
+        });
+    }
+
+    private void send(
+            String destination,
+            SupportChatMessageDto payload,
+            SupportConversationEntity conversation,
+            SupportMessageEntity message) {
+        try {
+            messagingTemplate.convertAndSend(destination, payload);
+        } catch (RuntimeException ex) {
+            sentryHandledExceptionReporter.capture(ex, scope -> {
+                scope.setTag("component", "support-chat");
+                scope.setTag("operation", "websocket-owner-reply-publish");
+                scope.setExtra("conversationId", conversation.getId().toString());
+                scope.setExtra("messageId", message.getId().toString());
+                scope.setExtra("destination", destination);
+            });
+            String logMessage =
+                    "support_chat.websocket.owner_reply.publish_failed: conversationId={}, messageId={}, exceptionClass={}";
+            log.warn(
+                    logMessage,
+                    conversation.getId(),
+                    message.getId(),
+                    ex.getClass().getSimpleName());
+        }
+    }
+}

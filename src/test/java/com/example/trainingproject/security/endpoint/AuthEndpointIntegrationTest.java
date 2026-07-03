@@ -1,0 +1,423 @@
+package com.example.trainingproject.security.endpoint;
+
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
+import java.net.URI;
+import java.util.Optional;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpStatus;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import com.example.trainingproject.common.exception.UnauthorizedException;
+import com.example.trainingproject.security.oauth.config.OAuthProvider;
+import com.example.trainingproject.security.oauth.login.OAuthLoginService;
+import com.example.trainingproject.security.oauth.login.OAuthProviderClient;
+import com.example.trainingproject.security.oauth.login.OAuthProviderClientRegistry;
+import com.example.trainingproject.security.session.management.AuthSessionRequestMetadata;
+import com.example.trainingproject.security.session.token.AuthenticationTokens;
+import com.example.trainingproject.test.config.IntegrationTestBase;
+
+import io.restassured.response.Response;
+import io.restassured.specification.RequestSpecification;
+
+@DisplayName("OAuth security endpoint integration tests")
+class AuthEndpointIntegrationTest extends IntegrationTestBase {
+
+    private static final String BASE_PATH = "/api/v1/auth";
+    private static final String GOOGLE_OAUTH_STATE_COOKIE = "training_project_oauth_state_google";
+    private static final String GITHUB_OAUTH_STATE_COOKIE = "training_project_oauth_state_github";
+
+    @LocalServerPort
+    private Integer port;
+
+    @Value("${frontend.url}")
+    private String frontendUrl;
+
+    @MockitoBean
+    private OAuthLoginService oAuthLoginService;
+
+    @MockitoBean
+    private OAuthProviderClientRegistry oAuthProviderClientRegistry;
+
+    @MockitoBean
+    private OAuthProviderClient oAuthProviderClient;
+
+    private RequestSpecification specification;
+
+    @BeforeEach
+    void setUp() {
+        specification = given().port(port).basePath(BASE_PATH);
+        when(oAuthProviderClientRegistry.findClient(OAuthProvider.GOOGLE)).thenReturn(Optional.of(oAuthProviderClient));
+        when(oAuthProviderClient.buildAuthorizationUri(any(String.class)))
+                .thenAnswer(invocation -> googleAuthUri(invocation.getArgument(0)));
+    }
+
+    @Test
+    @DisplayName("Should initiate Google auth and redirect back with one-time token handoff code")
+    void shouldInitiateGoogleAuthAndRedirectBackWithOneTimeTokenHandoffCode() {
+        String callbackBase = frontendUrl + "/auth/google/callback";
+
+        when(oAuthLoginService.handle(
+                        eq(OAuthProvider.GOOGLE), eq("valid-code"), any(AuthSessionRequestMetadata.class)))
+                .thenReturn(tokenPair("jwt-token", "refresh-token"));
+
+        Response initiateResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("redirectUrl", callbackBase)
+                .get("/oauth/google");
+
+        initiateResponse
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header(
+                        "Location",
+                        allOf(containsString("state="), containsString("client_id="), containsString("redirect_uri=")));
+
+        String state = extractState(initiateResponse);
+        String stateCookie = initiateResponse.getCookie(GOOGLE_OAUTH_STATE_COOKIE);
+        assertNotNull(state);
+        assertNotNull(stateCookie);
+
+        Response callbackResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GOOGLE_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "valid-code")
+                .queryParam("state", state)
+                .get("/oauth/google/callback");
+
+        callbackResponse
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header("Location", allOf(containsString(callbackBase), containsString("#oauthCode=")))
+                .header("Location", not(containsString("jwt-token")))
+                .header("Location", not(containsString("refresh-token")));
+
+        String handoffCode = extractOAuthCode(callbackResponse);
+        assertNotNull(handoffCode);
+
+        given(specification)
+                .queryParam("code", handoffCode)
+                .post("/oauth/token")
+                .then()
+                .statusCode(HttpStatus.OK.value())
+                .body("token", equalTo("jwt-token"))
+                .body("refreshToken", equalTo("refresh-token"));
+    }
+
+    @Test
+    @DisplayName("Should support provider-neutral Google OAuth routes")
+    void shouldSupportProviderNeutralGoogleOAuthRoutes() {
+        String callbackBase = frontendUrl + "/auth/google/callback";
+
+        when(oAuthLoginService.handle(
+                        eq(OAuthProvider.GOOGLE), eq("valid-code"), any(AuthSessionRequestMetadata.class)))
+                .thenReturn(tokenPair("jwt-token", "refresh-token"));
+
+        Response initiateResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("redirectUrl", callbackBase)
+                .get("/oauth/google");
+
+        String state = extractState(initiateResponse);
+        String stateCookie = initiateResponse.getCookie(GOOGLE_OAUTH_STATE_COOKIE);
+        assertNotNull(state);
+        assertNotNull(stateCookie);
+
+        Response callbackResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GOOGLE_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "valid-code")
+                .queryParam("state", state)
+                .get("/oauth/google/callback");
+
+        callbackResponse
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header("Location", allOf(containsString(callbackBase), containsString("#oauthCode=")))
+                .header("Location", not(containsString("jwt-token")))
+                .header("Location", not(containsString("refresh-token")));
+    }
+
+    @Test
+    @DisplayName("Should support provider-neutral GitHub OAuth routes")
+    void shouldSupportProviderNeutralGitHubOAuthRoutes() {
+        String callbackBase = frontendUrl + "/auth/github/callback";
+
+        when(oAuthProviderClientRegistry.findClient(OAuthProvider.GITHUB)).thenReturn(Optional.of(oAuthProviderClient));
+        when(oAuthProviderClient.buildAuthorizationUri(any(String.class)))
+                .thenAnswer(invocation -> gitHubAuthUri(invocation.getArgument(0)));
+        when(oAuthLoginService.handle(
+                        eq(OAuthProvider.GITHUB), eq("valid-code"), any(AuthSessionRequestMetadata.class)))
+                .thenReturn(tokenPair("jwt-token", "refresh-token"));
+
+        Response initiateResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("redirectUrl", callbackBase)
+                .get("/oauth/github");
+
+        String state = extractState(initiateResponse);
+        String stateCookie = initiateResponse.getCookie(GITHUB_OAUTH_STATE_COOKIE);
+        assertNotNull(state);
+        assertNotNull(stateCookie);
+
+        Response callbackResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GITHUB_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "valid-code")
+                .queryParam("state", state)
+                .get("/oauth/github/callback");
+
+        callbackResponse
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header("Location", allOf(containsString(callbackBase), containsString("#oauthCode=")))
+                .header("Location", not(containsString("jwt-token")))
+                .header("Location", not(containsString("refresh-token")));
+    }
+
+    @Test
+    @DisplayName("Should reject reused OAuth state after first successful callback")
+    void shouldRejectReusedOAuthStateAfterFirstSuccessfulCallback() {
+        String callbackBase = frontendUrl + "/auth/google/callback";
+
+        when(oAuthLoginService.handle(
+                        eq(OAuthProvider.GOOGLE), any(String.class), any(AuthSessionRequestMetadata.class)))
+                .thenReturn(tokenPair("jwt-once", "refresh-once"));
+
+        Response initiateResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("redirectUrl", callbackBase)
+                .get("/oauth/google");
+
+        String state = extractState(initiateResponse);
+        String stateCookie = initiateResponse.getCookie(GOOGLE_OAUTH_STATE_COOKIE);
+        assertNotNull(state);
+        assertNotNull(stateCookie);
+
+        given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GOOGLE_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "first-code")
+                .queryParam("state", state)
+                .get("/oauth/google/callback")
+                .then()
+                .statusCode(HttpStatus.FOUND.value());
+
+        given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GOOGLE_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "second-code")
+                .queryParam("state", state)
+                .get("/oauth/google/callback")
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header("Location", equalTo(frontendUrl + "/signin?error=invalid_state"));
+
+        verify(oAuthLoginService, times(1))
+                .handle(eq(OAuthProvider.GOOGLE), any(String.class), any(AuthSessionRequestMetadata.class));
+    }
+
+    @Test
+    @DisplayName("Should fallback to configured frontend URL when redirectUrl origin is not allowed")
+    void shouldFallbackToConfiguredFrontendUrlWhenRedirectUrlOriginIsNotAllowed() {
+        when(oAuthLoginService.handle(eq(OAuthProvider.GOOGLE), eq("safe-code"), any(AuthSessionRequestMetadata.class)))
+                .thenReturn(tokenPair("safe-jwt", "safe-refresh"));
+
+        Response initiateResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("redirectUrl", "https://evil.example.com/callback")
+                .get("/oauth/google");
+
+        String state = extractState(initiateResponse);
+        String stateCookie = initiateResponse.getCookie(GOOGLE_OAUTH_STATE_COOKIE);
+        assertNotNull(state);
+        assertNotNull(stateCookie);
+
+        Response callbackResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GOOGLE_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "safe-code")
+                .queryParam("state", state)
+                .get("/oauth/google/callback");
+
+        callbackResponse
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header(
+                        "Location",
+                        allOf(
+                                containsString(frontendUrl + "/auth/google/callback"),
+                                containsString("#oauthCode="),
+                                not(containsString("safe-jwt")),
+                                not(containsString("safe-refresh")),
+                                not(containsString("evil.example.com"))));
+    }
+
+    @Test
+    @DisplayName("Should fallback to configured callback path when redirectUrl uses an unexpected frontend path")
+    void shouldFallbackToConfiguredCallbackPathWhenRedirectUrlUsesUnexpectedFrontendPath() {
+        when(oAuthLoginService.handle(eq(OAuthProvider.GOOGLE), eq("safe-code"), any(AuthSessionRequestMetadata.class)))
+                .thenReturn(tokenPair("safe-jwt", "safe-refresh"));
+
+        Response initiateResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("redirectUrl", frontendUrl + "/profile")
+                .get("/oauth/google");
+
+        String state = extractState(initiateResponse);
+        String stateCookie = initiateResponse.getCookie(GOOGLE_OAUTH_STATE_COOKIE);
+        assertNotNull(state);
+        assertNotNull(stateCookie);
+
+        Response callbackResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GOOGLE_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "safe-code")
+                .queryParam("state", state)
+                .get("/oauth/google/callback");
+
+        callbackResponse
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header(
+                        "Location",
+                        allOf(
+                                containsString(frontendUrl + "/auth/google/callback"),
+                                containsString("#oauthCode="),
+                                not(containsString("safe-jwt")),
+                                not(containsString("/profile"))));
+    }
+
+    @Test
+    @DisplayName("Should redirect with missing_code error when callback code is absent")
+    void shouldRedirectWithMissingCodeErrorWhenCallbackCodeIsAbsent() {
+        given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("state", "any-state")
+                .get("/oauth/google/callback")
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header("Location", equalTo(frontendUrl + "/signin?error=missing_code"));
+
+        verify(oAuthLoginService, never())
+                .handle(any(OAuthProvider.class), any(String.class), any(AuthSessionRequestMetadata.class));
+    }
+
+    @Test
+    @DisplayName("Should redirect with invalid_state when callback state is absent")
+    void shouldRedirectWithInvalidStateWhenCallbackStateIsAbsent() {
+        given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("code", "valid-code")
+                .get("/oauth/google/callback")
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header("Location", equalTo(frontendUrl + "/signin?error=invalid_state"));
+
+        verify(oAuthLoginService, never())
+                .handle(any(OAuthProvider.class), any(String.class), any(AuthSessionRequestMetadata.class));
+    }
+
+    @Test
+    @DisplayName("Should redirect back to stored callback with auth_failed when handler throws")
+    void shouldRedirectBackToStoredCallbackWhenHandlerThrows() {
+        String callbackBase = frontendUrl + "/auth/google/callback?next=/checkout";
+
+        when(oAuthLoginService.handle(
+                        eq(OAuthProvider.GOOGLE), eq("broken-code"), any(AuthSessionRequestMetadata.class)))
+                .thenThrow(new UnauthorizedException("exchange failed"));
+
+        Response initiateResponse = given(specification)
+                .redirects()
+                .follow(false)
+                .queryParam("redirectUrl", callbackBase)
+                .get("/oauth/google");
+
+        String state = extractState(initiateResponse);
+        String stateCookie = initiateResponse.getCookie(GOOGLE_OAUTH_STATE_COOKIE);
+        assertNotNull(state);
+        assertNotNull(stateCookie);
+
+        given(specification)
+                .redirects()
+                .follow(false)
+                .cookie(GOOGLE_OAUTH_STATE_COOKIE, stateCookie)
+                .queryParam("code", "broken-code")
+                .queryParam("state", state)
+                .get("/oauth/google/callback")
+                .then()
+                .statusCode(HttpStatus.FOUND.value())
+                .header("Location", equalTo(frontendUrl + "/signin?error=auth_failed&next=/checkout"));
+    }
+
+    @Test
+    @DisplayName("Should return 405 for GET refresh requests")
+    void shouldReturn405ForGetRefreshRequests() {
+        given(specification).get("/refresh").then().statusCode(HttpStatus.METHOD_NOT_ALLOWED.value());
+    }
+
+    private String extractState(Response response) {
+        String location = response.getHeader("Location");
+        return UriComponentsBuilder.fromUriString(location)
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+    }
+
+    private String extractOAuthCode(Response response) {
+        String location = response.getHeader("Location");
+        int marker = location.indexOf("#oauthCode=");
+        if (marker < 0) {
+            return null;
+        }
+        return location.substring(marker + "#oauthCode=".length());
+    }
+
+    private URI googleAuthUri(String state) {
+        return UriComponentsBuilder.fromUriString("https://accounts.google.com/o/oauth2/v2/auth")
+                .queryParam("state", state)
+                .queryParam("client_id", "client-id")
+                .queryParam("redirect_uri", "http://localhost:" + port + BASE_PATH + "/oauth/google/callback")
+                .build()
+                .toUri();
+    }
+
+    private URI gitHubAuthUri(String state) {
+        return UriComponentsBuilder.fromUriString("https://github.com/login/oauth/authorize")
+                .queryParam("state", state)
+                .queryParam("client_id", "client-id")
+                .queryParam("redirect_uri", "http://localhost:" + port + BASE_PATH + "/oauth/github/callback")
+                .build()
+                .toUri();
+    }
+
+    private AuthenticationTokens tokenPair(String token, String refreshToken) {
+        return new AuthenticationTokens(token, refreshToken);
+    }
+}

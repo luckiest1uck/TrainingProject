@@ -1,0 +1,95 @@
+package com.example.trainingproject.filestorage.service;
+
+import java.io.IOException;
+import java.time.Instant;
+
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
+import com.example.trainingproject.common.monitoring.SentryJobMonitor;
+import com.example.trainingproject.filestorage.api.dto.FileMetadataDto;
+import com.example.trainingproject.filestorage.config.FileDeletionOutboxProperties;
+import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository;
+import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository.FileDeletionOutboxRow;
+import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository.FileObjectDeletionPayload;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class FileDeletionOutboxWorker {
+
+    private static final String MONITOR_SLUG = "file-deletion-outbox-worker";
+
+    private final FileDeletionOutboxRepository outboxRepository;
+    private final FileDeletionOutboxProperties properties;
+    private final ObjectMapper objectMapper;
+    private final ObjectStorage objectStorage;
+    private final SentryJobMonitor sentryJobMonitor;
+    private final SentryHandledExceptionReporter sentryHandledExceptionReporter;
+
+    @Scheduled(fixedDelayString = "${file-storage.deletion-outbox.poll-interval:PT30S}")
+    public void deletePendingObjects() {
+        sentryJobMonitor.run(
+                MONITOR_SLUG,
+                sentryJobMonitor.fixedDelayConfig(properties.pollInterval().toMillis()),
+                this::deletePendingObjectsInternal);
+    }
+
+    void deletePendingObjectsInternal() {
+        if (!properties.enabled() || !properties.workerEnabled()) {
+            return;
+        }
+        if (!objectStorage.isConfigured()) {
+            log.warn("file.deletion_outbox.skipped: reason=object_storage_not_configured");
+            return;
+        }
+
+        int reclaimed = outboxRepository.reclaimStaleLocks(Instant.now().minus(properties.staleLockTimeout()));
+        if (reclaimed > 0) {
+            log.warn("file.deletion_outbox.locks.reclaimed: count={}", reclaimed);
+        }
+
+        var events = outboxRepository.claimDeleteObjectEvents(properties.batchSize(), properties.workerId());
+        for (FileDeletionOutboxRow event : events) {
+            deleteObject(event);
+        }
+    }
+
+    private void deleteObject(FileDeletionOutboxRow event) {
+        try {
+            FileObjectDeletionPayload payload =
+                    objectMapper.readValue(event.payload(), FileObjectDeletionPayload.class);
+            objectStorage.delete(
+                    new FileMetadataDto(payload.relatedObjectId(), payload.bucketName(), payload.fileName()));
+            boolean markedDeleted = outboxRepository.markDeleted(event.id(), properties.workerId());
+            if (!markedDeleted) {
+                String logMessage = "file.deletion_outbox.delete_mark_missed: eventId={}, workerId={}";
+                log.warn(logMessage, event.eventId(), properties.workerId());
+                return;
+            }
+            log.info("file.deletion_outbox.deleted: eventId={}, fileName={}", event.eventId(), payload.fileName());
+        } catch (IOException | RuntimeException ex) {
+            boolean markedFailed = outboxRepository.markFailed(
+                    event.id(), properties.workerId(), event.attemptCount(), event.maxAttempts(), ex);
+            sentryHandledExceptionReporter.capture(ex, scope -> {
+                scope.setTag("component", "file-deletion-outbox");
+                scope.setTag("operation", "delete-pending-object");
+                scope.setExtra("eventId", event.eventId().toString());
+                scope.setExtra("rowId", event.id().toString());
+                scope.setExtra("workerId", properties.workerId());
+                scope.setExtra("attemptCount", Integer.toString(event.attemptCount()));
+                scope.setExtra("maxAttempts", Integer.toString(event.maxAttempts()));
+            });
+            if (!markedFailed) {
+                String logMessage = "file.deletion_outbox.failure_mark_missed: eventId={}, workerId={}";
+                log.warn(logMessage, event.eventId(), properties.workerId());
+            }
+            log.warn("file.deletion_outbox.failed: eventId={}", event.eventId(), ex);
+        }
+    }
+}

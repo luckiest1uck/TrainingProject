@@ -1,0 +1,126 @@
+package com.example.trainingproject.security.signup.verification;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
+
+import java.time.Duration;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.trainingproject.common.exception.BadRequestException;
+import com.example.trainingproject.openapi.dto.UserRegistrationRequest;
+import com.example.trainingproject.security.jwt.config.JwtProperties;
+import com.example.trainingproject.security.service.cache.InMemoryExpiringKeyValueStore;
+import com.example.trainingproject.security.signup.exception.TimeTokenException;
+
+@DisplayName("EmailTokenService contract tests")
+class EmailTokenServiceContractTest {
+
+    private EmailTokenService service;
+    private PasswordEncoder passwordEncoder;
+
+    @BeforeEach
+    void setUp() {
+        passwordEncoder = mock(PasswordEncoder.class);
+        org.mockito.Mockito.when(passwordEncoder.encode(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("encoded-password");
+        ObjectMapper objectMapper = new ObjectMapper();
+        service = new EmailTokenService(
+                new InMemoryExpiringKeyValueStore(new com.example.trainingproject.common.config.CaffeineSizeProperties(
+                        1_000, 5_000, 10_000, 1_000, 10_000)),
+                passwordEncoder,
+                tokenPayloadProtector(objectMapper),
+                new EmailTokenProperties(43, ""),
+                new TemporaryTokenProperties(new TemporaryTokenProperties.Time(5)));
+    }
+
+    @Test
+    @DisplayName("generated token can be validated once and only once")
+    void generatedTokenCanBeValidatedOnceAndOnlyOnce() {
+        UserRegistrationRequest request = new UserRegistrationRequest("John", "Doe", "john@example.com", "Password1!");
+
+        String token = service.generateEmailVerificationToken(request);
+        EmailVerificationTokenPayload consumed = service.consumeEmailVerificationToken(token);
+
+        assertThat(consumed.email()).isEqualTo(request.getEmail());
+        assertThat(consumed.registration().email()).isEqualTo(request.getEmail());
+        assertThat(consumed.encodedPassword()).isEqualTo("encoded-password");
+        assertThatThrownBy(() -> service.consumeEmailVerificationToken(token)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("wrong token purpose is rejected")
+    void wrongTokenPurposeIsRejected() {
+        UserRegistrationRequest request = new UserRegistrationRequest("John", "Doe", "john@example.com", "Password1!");
+        String token = service.generateEmailVerificationToken(request);
+
+        assertThatThrownBy(() -> service.consumePasswordResetToken(token)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("cooldown blocks repeated token generation until consumed")
+    void cooldownBlocksRepeatedTokenGenerationUntilConsumed() {
+        UserRegistrationRequest request = new UserRegistrationRequest("John", "Doe", "john@example.com", "Password1!");
+        String token = service.generateEmailVerificationToken(request);
+
+        assertThatThrownBy(() -> service.generateEmailVerificationToken(request))
+                .isInstanceOf(TimeTokenException.class);
+        verify(passwordEncoder, times(1)).encode("Password1!");
+
+        service.consumeEmailVerificationToken(token);
+
+        assertThatCode(() -> service.generateEmailVerificationToken(request)).doesNotThrowAnyException();
+        verify(passwordEncoder, times(2)).encode("Password1!");
+    }
+
+    @Test
+    @DisplayName("cooldown uses normalized email casing")
+    void cooldownUsesNormalizedEmailCasing() {
+        UserRegistrationRequest request = new UserRegistrationRequest("John", "Doe", "John@Example.com", "Password1!");
+        UserRegistrationRequest sameEmailDifferentCase =
+                new UserRegistrationRequest("John", "Doe", " john@example.COM ", "Password1!");
+
+        service.generateEmailVerificationToken(request);
+
+        assertThatThrownBy(() -> service.generateEmailVerificationToken(sameEmailDifferentCase))
+                .isInstanceOf(TimeTokenException.class);
+    }
+
+    @Test
+    @DisplayName("cooldown is scoped by token purpose")
+    void cooldownIsScopedByTokenPurpose() {
+        UserRegistrationRequest request = new UserRegistrationRequest("John", "Doe", "john@example.com", "Password1!");
+
+        service.generateEmailVerificationToken(request);
+
+        assertThatCode(() -> service.generatePasswordResetToken(request.getEmail()))
+                .doesNotThrowAnyException();
+    }
+
+    private static EmailTokenPayloadProtector tokenPayloadProtector(ObjectMapper objectMapper) {
+        return new EmailTokenPayloadProtector(objectMapper, jwtProperties(), new EmailTokenProperties(43, ""));
+    }
+
+    private static JwtProperties jwtProperties() {
+        return new JwtProperties(
+                "Authorization",
+                "NDA0RTYzNTI2NjU1NkE1ODZFMzI3MjM1NzUzODc4MkY0MTNBNDQ0Mjg0NzJCNEI2MjUwNjQ1MzY3NTY2QjU5NzA=",
+                "NDA0RTYzNTI2NjU1NkE1ODZFMzI3MjM1NzUzODc4MkY0MTNBNDQ0Mjg0NzJCNEI2MjUwNjQ1MzY3NTY2QjU5NzA0MDRFNTM1MjY2NTU2QTU4NkUzMjcyMzU3NTM4NzgyRjQxM0E0NDQyODQ3MkI0QjYyNTA2NDUzNjc1NjZCNTk3MA==",
+                Duration.ofMinutes(30),
+                Duration.ofHours(24),
+                "training-project",
+                "training-project-users",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+}

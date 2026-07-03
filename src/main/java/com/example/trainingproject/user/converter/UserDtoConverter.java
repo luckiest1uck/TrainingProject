@@ -1,0 +1,86 @@
+package com.example.trainingproject.user.converter;
+
+import org.jspecify.annotations.Nullable;
+import org.mapstruct.AfterMapping;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.MappingConstants;
+import org.mapstruct.MappingTarget;
+import org.mapstruct.ReportingPolicy;
+import org.springframework.util.StringUtils;
+
+import com.example.trainingproject.openapi.dto.AddressDto;
+import com.example.trainingproject.openapi.dto.UpdateUserAccountRequest;
+import com.example.trainingproject.openapi.dto.UserDto;
+import com.example.trainingproject.user.entity.Address;
+import com.example.trainingproject.user.entity.UserEntity;
+
+@SuppressWarnings("NullableProblems")
+@Mapper(
+        componentModel = MappingConstants.ComponentModel.SPRING,
+        uses = AddressDtoConverter.class,
+        unmappedTargetPolicy = ReportingPolicy.ERROR)
+public interface UserDtoConverter {
+
+    @Mapping(target = "address", source = "address", qualifiedByName = "toAddressDto")
+    @Mapping(target = "avatarLink", ignore = true)
+    @Mapping(target = "oauthUser", source = "oauthUser")
+    UserDto toDto(final UserEntity entity);
+
+    @Mapping(target = "address", ignore = true)
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "email", ignore = true)
+    @Mapping(target = "password", ignore = true)
+    @Mapping(target = "stripeCustomerToken", ignore = true)
+    @Mapping(target = "authorities", ignore = true)
+    @Mapping(target = "accountNonExpired", ignore = true)
+    @Mapping(target = "accountNonLocked", ignore = true)
+    @Mapping(target = "credentialsNonExpired", ignore = true)
+    @Mapping(target = "enabled", ignore = true)
+    @Mapping(target = "oauthUser", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "updatedBy", ignore = true)
+    void updateEntity(@MappingTarget UserEntity entity, UpdateUserAccountRequest request);
+
+    @AfterMapping
+    default void updateAddress(@MappingTarget UserEntity entity, UpdateUserAccountRequest request) {
+        AddressDto dto = request.getAddress();
+        if (dto == null || isEmptyAddress(dto)) {
+            entity.setAddress(null);
+            return;
+        }
+
+        String country = required(dto.getCountry(), "country");
+        String city = required(dto.getCity(), "city");
+        String line = required(dto.getLine(), "line");
+        String postcode = required(dto.getPostcode(), "postcode");
+
+        if (entity.getAddress() == null) {
+            entity.setAddress(Address.builder()
+                    .country(country)
+                    .city(city)
+                    .line(line)
+                    .postcode(postcode)
+                    .build());
+            return;
+        }
+
+        entity.getAddress().update(country, city, line, postcode);
+    }
+
+    private static boolean isEmptyAddress(AddressDto dto) {
+        return !StringUtils.hasText(dto.getCountry())
+                && !StringUtils.hasText(dto.getCity())
+                && !StringUtils.hasText(dto.getLine())
+                && !StringUtils.hasText(dto.getPostcode());
+    }
+
+    private static String required(@Nullable String value, String fieldName) {
+        if (!StringUtils.hasText(value)) {
+            throw new IllegalArgumentException("address." + fieldName + " is required");
+        }
+        return value;
+    }
+}

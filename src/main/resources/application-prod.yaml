@@ -1,0 +1,99 @@
+# =============================================================================
+#                    TRAINING PROJECT — PROD PROFILE OVERRIDES
+# =============================================================================
+# Activated by: SPRING_PROFILES_ACTIVE=prod
+# Purpose: Hardened for production — no error leaks, no Swagger, eager bean
+#          validation, full observability pipeline via OpenTelemetry Collector.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SPRING CORE — production hardening
+# ─────────────────────────────────────────────────────────────────────────────
+spring:
+  main:
+    # Disable lazy init in prod — all beans are created at startup so
+    # misconfigurations fail fast during deployment, not on first request.
+    lazy-initialization: false
+  liquibase:
+    # Never drop tables in production.
+    drop-first: false
+  jpa:
+    # Never print SQL in production logs (noise + potential data leak).
+    show-sql: false
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API DOCUMENTATION — disabled in production (not publicly accessible)
+# ─────────────────────────────────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OBSERVABILITY — Sentry + OpenTelemetry + Pyroscope
+# ─────────────────────────────────────────────────────────────────────────────
+sentry:
+  sample-rate: 1.0
+  trace-critical-sample-rate: 1.0
+  trace-user-facing-sample-rate: 1.0
+  trace-default-sample-rate: 1.0
+  # Profile 25% of traced transactions (CPU flame graphs).
+  profiles-sample-rate: 0.25
+
+management:
+  tracing:
+    sampling:
+      # Trace 100% of requests (low-traffic project, full visibility).
+      probability: 1.0
+    export:
+      otlp:
+        enabled: ${OTEL_EXPORTER_ENABLED:false}
+  logging:
+    export:
+      otlp:
+        enabled: ${OTEL_EXPORTER_ENABLED:false}
+  otlp:
+    metrics:
+      export:
+        enabled: ${OTEL_EXPORTER_ENABLED:false}
+        # URL of the OpenTelemetry Collector metrics endpoint.
+        url: ${OTEL_COLLECTOR_BASE_URL}/v1/metrics
+        # How often metrics are pushed to the collector.
+        step: 1m
+  # Spring Boot 4.x OTel properties — routes all signals through local OTel Collector.
+  opentelemetry:
+    resource-attributes:
+      service.name: ${OTEL_SERVICE_NAME:training-project-backend}
+      service.namespace: ${OTEL_SERVICE_NAMESPACE:training-project}
+      service.version: ${OTEL_SERVICE_VERSION:latest}
+      deployment.environment: ${OTEL_DEPLOYMENT_ENVIRONMENT:production}
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_COLLECTOR_BASE_URL}/v1/traces
+          transport: http
+    logging:
+      export:
+        otlp:
+          endpoint: ${OTEL_COLLECTOR_BASE_URL}/v1/logs
+          transport: http
+
+# Pyroscope continuous profiling — production-specific settings.
+pyroscope:
+  profiling-interval: 10ms
+  upload-interval: 15s
+  labels:
+    environment: production
+    region: eu-west-2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGGING — quieter in production, only warn on slow requests
+# ─────────────────────────────────────────────────────────────────────────────
+logging:
+  level:
+    http.access: ${HTTP_ACCESS_LOG_LEVEL:WARN}

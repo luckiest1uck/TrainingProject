@@ -1,0 +1,186 @@
+package com.example.trainingproject.review.kafka;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.TopicPartition;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
+import com.example.trainingproject.common.monitoring.SentryJobMonitor;
+import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
+import com.example.trainingproject.review.messaging.kafka.outbox.OutboxEventRepository;
+import com.example.trainingproject.review.messaging.kafka.outbox.ReviewCreatedKafkaPublisher;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("ReviewCreatedKafkaPublisher")
+class ReviewCreatedKafkaPublisherTest {
+
+    @Mock
+    private KafkaTemplate<String, String> kafkaTemplate;
+
+    @Mock
+    private OutboxEventRepository outboxEventRepository;
+
+    @Mock
+    private SentryJobMonitor sentryJobMonitor;
+
+    @Mock
+    private SentryHandledExceptionReporter sentryHandledExceptionReporter;
+
+    private ReviewCreatedKafkaPublisher publisher;
+
+    @BeforeEach
+    void setUp() {
+        doAnswer(invocation -> {
+                    ((Runnable) invocation.getArgument(2)).run();
+                    return null;
+                })
+                .when(sentryJobMonitor)
+                .run(any(), any(), any(Runnable.class));
+        KafkaIntegrationProperties properties = new KafkaIntegrationProperties(
+                true,
+                new KafkaIntegrationProperties.Topics("training-project.review.created.v1"),
+                new KafkaIntegrationProperties.ConsumerGroups("training-project-review-ai"),
+                new KafkaIntegrationProperties.Outbox(
+                        true,
+                        true,
+                        25,
+                        10,
+                        Duration.ofSeconds(5),
+                        Duration.ofMinutes(5),
+                        Duration.ofSeconds(10),
+                        "test-outbox-worker"),
+                KafkaIntegrationProperties.Inbox.defaults());
+        publisher = new ReviewCreatedKafkaPublisher(
+                kafkaTemplate,
+                new ObjectMapper(),
+                properties,
+                outboxEventRepository,
+                sentryJobMonitor,
+                sentryHandledExceptionReporter);
+    }
+
+    @Test
+    @DisplayName("publishes claimed outbox rows and marks them published after Kafka ack")
+    void publishesClaimedOutboxRowsAndMarksThemPublishedAfterKafkaAck() {
+        UUID eventId = UUID.randomUUID();
+        UUID rowId = UUID.randomUUID();
+        var row = new OutboxEventRepository.OutboxEventRow(
+                rowId,
+                eventId,
+                "training-project.review.created.v1",
+                "product-1",
+                "{\"eventId\":\"" + eventId + "\"}",
+                "{\"eventId\":\"" + eventId + "\",\"correlationId\":null}",
+                0,
+                10);
+        when(outboxEventRepository.claimPublishableEvents(anyInt(), anyString()))
+                .thenReturn(List.of(row));
+        var producerRecord = new ProducerRecord<>("training-project.review.created.v1", "product-1", row.payload());
+        var metadata = new RecordMetadata(new TopicPartition("training-project.review.created.v1", 0), 42L, 0, 0L, 0, 0);
+        when(kafkaTemplate.send(org.mockito.ArgumentMatchers.<ProducerRecord<String, String>>argThat(
+                        record -> record.topic().equals("training-project.review.created.v1")
+                                && record.key().equals("product-1")
+                                && record.value().equals(row.payload())
+                                && new String(record.headers()
+                                                .lastHeader("eventId")
+                                                .value())
+                                        .equals(eventId.toString())
+                                && record.headers().lastHeader("correlationId").value() == null)))
+                .thenReturn(CompletableFuture.completedFuture(new SendResult<>(producerRecord, metadata)));
+
+        publisher.publishPendingOutboxEvents();
+
+        verify(kafkaTemplate)
+                .send(org.mockito.ArgumentMatchers.<ProducerRecord<String, String>>argThat(record -> record.topic()
+                                .equals("training-project.review.created.v1")
+                        && record.key().equals("product-1")
+                        && record.value().equals(row.payload())
+                        && new String(record.headers().lastHeader("eventId").value()).equals(eventId.toString())
+                        && record.headers().lastHeader("correlationId").value() == null));
+        verify(outboxEventRepository).markPublished(rowId, "test-outbox-worker", 0, 42L);
+        verify(sentryJobMonitor).run(eq("review-created-kafka-publisher"), any(), any(Runnable.class));
+    }
+
+    @Test
+    @DisplayName("marks claimed outbox rows failed when Kafka send fails")
+    void marksClaimedOutboxRowsFailedWhenKafkaSendFails() {
+        UUID eventId = UUID.randomUUID();
+        UUID rowId = UUID.randomUUID();
+        var row = new OutboxEventRepository.OutboxEventRow(
+                rowId,
+                eventId,
+                "training-project.review.created.v1",
+                "product-1",
+                "{\"eventId\":\"" + eventId + "\"}",
+                "{}",
+                2,
+                10);
+        when(outboxEventRepository.claimPublishableEvents(anyInt(), anyString()))
+                .thenReturn(List.of(row));
+        CompletableFuture<SendResult<String, String>> failedSend = new CompletableFuture<>();
+        IllegalStateException failure = new IllegalStateException("broker unavailable");
+        failedSend.completeExceptionally(failure);
+        when(kafkaTemplate.send(org.mockito.ArgumentMatchers.<ProducerRecord<String, String>>any()))
+                .thenReturn(failedSend);
+
+        publisher.publishPendingOutboxEvents();
+
+        verify(outboxEventRepository)
+                .markFailed(eq(rowId), eq("test-outbox-worker"), eq(2), eq(10), isA(Exception.class));
+        verify(sentryHandledExceptionReporter).capture(isA(Exception.class), any());
+    }
+
+    @Test
+    @DisplayName("does not publish when outbox worker is disabled")
+    void doesNotPublishWhenOutboxWorkerIsDisabled() {
+        KafkaIntegrationProperties properties = new KafkaIntegrationProperties(
+                true,
+                new KafkaIntegrationProperties.Topics("training-project.review.created.v1"),
+                new KafkaIntegrationProperties.ConsumerGroups("training-project-review-ai"),
+                new KafkaIntegrationProperties.Outbox(
+                        true,
+                        false,
+                        25,
+                        10,
+                        Duration.ofSeconds(5),
+                        Duration.ofMinutes(5),
+                        Duration.ofSeconds(10),
+                        "test-outbox-worker"),
+                KafkaIntegrationProperties.Inbox.defaults());
+        var disabledPublisher = new ReviewCreatedKafkaPublisher(
+                kafkaTemplate,
+                new ObjectMapper(),
+                properties,
+                outboxEventRepository,
+                sentryJobMonitor,
+                sentryHandledExceptionReporter);
+
+        disabledPublisher.publishPendingOutboxEvents();
+
+        verifyNoInteractions(kafkaTemplate, outboxEventRepository);
+    }
+}

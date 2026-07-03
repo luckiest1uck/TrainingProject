@@ -1,0 +1,134 @@
+package com.example.trainingproject.review.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+
+import com.example.trainingproject.common.config.PaginationConfig;
+import com.example.trainingproject.openapi.dto.ProductReviewDto;
+import com.example.trainingproject.openapi.dto.ProductReviewsAndRatingsWithPagination;
+import com.example.trainingproject.review.converter.ProductReviewDtoConverter;
+import com.example.trainingproject.review.entity.ProductReview;
+import com.example.trainingproject.review.exception.ReviewNotFoundException;
+import com.example.trainingproject.review.repository.ProductReviewRepository;
+import com.example.trainingproject.review.service.validator.ProductReviewValidator;
+import com.example.trainingproject.user.api.UserLookupApi;
+import com.example.trainingproject.user.api.dto.UserLookupSnapshot;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("ProductReviewsProvider unit tests")
+class ProductReviewsProviderTest {
+
+    @Mock
+    private ProductReviewRepository reviewRepository;
+
+    @Mock
+    private ProductReviewDtoConverter productReviewDtoConverter;
+
+    @Mock
+    private ProductReviewValidator productReviewValidator;
+
+    @Mock
+    private UserLookupApi userLookupApi;
+
+    private ProductReviewsProvider provider;
+
+    private UUID productId;
+    private UUID userId;
+
+    @BeforeEach
+    void setUp() {
+        var paginationConfig = new PaginationConfig(
+                0,
+                new PaginationConfig.Products(50, "name", "desc"),
+                new PaginationConfig.Reviews(10, "createdAt", "desc"),
+                new PaginationConfig.Orders(10, 50, "createdAt", "desc"));
+        productId = UUID.randomUUID();
+        userId = UUID.randomUUID();
+        provider = new ProductReviewsProvider(
+                reviewRepository, productReviewDtoConverter, productReviewValidator, paginationConfig, userLookupApi);
+    }
+
+    @Test
+    @DisplayName("getProductReviews uses defaults when params are null")
+    void getProductReviewsNullParamsUsesDefaults() {
+        var review =
+                ProductReview.builder().id(UUID.randomUUID()).userId(userId).build();
+        var page = new PageImpl<>(List.of(review));
+        when(reviewRepository.findAllProductReviews(eq(productId), eq(null), any(Pageable.class)))
+                .thenReturn(page);
+        var user = user();
+        when(userLookupApi.getUsersByIds(Set.of(userId))).thenReturn(Set.of(user));
+        var dto = new ProductReviewDto();
+        when(productReviewDtoConverter.toProductReviewDto(review, user)).thenReturn(dto);
+        var expected = new ProductReviewsAndRatingsWithPagination();
+        when(productReviewDtoConverter.toProductReviewsAndRatingsWithPagination(any()))
+                .thenReturn(expected);
+
+        var result = provider.getProductReviews(productId, null, null, null, null, null);
+
+        assertThat(result).isEqualTo(expected);
+        verify(productReviewValidator).validateProductExists(productId);
+        verify(userLookupApi, never()).getUserById(userId);
+    }
+
+    @Test
+    @DisplayName("getProductReviewForUser throws ReviewNotFoundException when no review found")
+    void getProductReviewForUserNoReviewReturnsEmpty() {
+        when(reviewRepository.findByUserIdAndProductId(userId, productId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> provider.getProductReviewForUser(productId, userId))
+                .isInstanceOf(ReviewNotFoundException.class)
+                .hasMessageContaining(productId.toString())
+                .hasMessageContaining(userId.toString());
+        verify(productReviewValidator).validateProductExists(productId);
+    }
+
+    @Test
+    @DisplayName("getProductReviewForUser returns mapped dto when review exists")
+    void getProductReviewForUserReviewExistsReturnsMappedDto() {
+        var review =
+                ProductReview.builder().id(UUID.randomUUID()).userId(userId).build();
+        var user = user();
+        var dto = new ProductReviewDto();
+        when(reviewRepository.findByUserIdAndProductId(userId, productId)).thenReturn(Optional.of(review));
+        when(userLookupApi.getUserById(userId)).thenReturn(user);
+        when(productReviewDtoConverter.toProductReviewDto(review, user)).thenReturn(dto);
+
+        assertThat(provider.getProductReviewForUser(productId, userId)).isEqualTo(dto);
+    }
+
+    @Test
+    @DisplayName("getUserReviews uses current user id and returns paginated result")
+    void getUserReviewsReturnsResult() {
+        var page = new PageImpl<>(List.<ProductReview>of());
+        when(reviewRepository.findAllByUserId(eq(userId), any(Pageable.class))).thenReturn(page);
+        var expected = new ProductReviewsAndRatingsWithPagination();
+        when(productReviewDtoConverter.toProductReviewsAndRatingsWithPagination(any()))
+                .thenReturn(expected);
+
+        assertThat(provider.getUserReviews(userId, 0, 10, "createdAt", "desc")).isEqualTo(expected);
+    }
+
+    private UserLookupSnapshot user() {
+        return new UserLookupSnapshot(userId, "Ada", "Lovelace", "ada@example.com");
+    }
+}

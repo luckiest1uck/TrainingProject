@@ -1,0 +1,31 @@
+package com.example.trainingproject.filestorage.converter;
+
+import java.util.List;
+
+import org.mapstruct.IterableMapping;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.MappingConstants;
+import org.mapstruct.Named;
+import org.mapstruct.ReportingPolicy;
+
+import com.example.trainingproject.filestorage.api.dto.FileMetadataDto;
+import com.example.trainingproject.filestorage.entity.FileMetadata;
+
+@SuppressWarnings("NullableProblems")
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING, unmappedTargetPolicy = ReportingPolicy.ERROR)
+public interface FileMetadataDtoConverter {
+
+    @Named("toFileMetadataDto")
+    FileMetadataDto toDto(final FileMetadata entity);
+
+    @Named("toFileMetadata")
+    @Mapping(target = "fileId", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    FileMetadata toEntity(final FileMetadataDto dto);
+
+    @Named("toFileMetadataList")
+    @IterableMapping(qualifiedByName = "toFileMetadata")
+    List<FileMetadata> toEntityList(final List<FileMetadataDto> dtoList);
+}

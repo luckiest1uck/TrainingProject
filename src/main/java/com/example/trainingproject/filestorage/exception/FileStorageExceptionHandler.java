@@ -1,0 +1,69 @@
+package com.example.trainingproject.filestorage.exception;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import com.example.trainingproject.common.exception.ProblemType;
+import com.example.trainingproject.common.exception.handler.ProblemDetailFactory;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@RestControllerAdvice
+@RequiredArgsConstructor
+public class FileStorageExceptionHandler {
+
+    private final ProblemDetailFactory problemDetailFactory;
+
+    @ExceptionHandler(FileStorageException.class)
+    public ResponseEntity<ProblemDetail> handleFileStorageException(final FileStorageException ex) {
+        record ErrorMapping(String logTag, String typeSlug, String title, HttpStatus status, String detail) {}
+
+        var mapping =
+                switch (ex) {
+                    case FileListException _ ->
+                        new ErrorMapping(
+                                "exception.file.list_failed",
+                                ProblemType.FILE_LIST_FAILED,
+                                "File listing failed",
+                                HttpStatus.SERVICE_UNAVAILABLE,
+                                "File storage is not available.");
+                    case FileReadException _ ->
+                        new ErrorMapping(
+                                "exception.file.read_failed",
+                                ProblemType.FILE_READ_FAILED,
+                                "File read failed",
+                                HttpStatus.BAD_REQUEST,
+                                ex.getMessage());
+                    case FileUploadException e
+                    when e.getCause() instanceof IllegalStateException ->
+                        new ErrorMapping(
+                                "exception.file.storage_unavailable",
+                                ProblemType.FILE_UPLOAD_FAILED,
+                                "File upload failed",
+                                HttpStatus.SERVICE_UNAVAILABLE,
+                                "File storage is not available.");
+                    case FileUploadException e ->
+                        new ErrorMapping(
+                                "exception.file.upload_failed",
+                                ProblemType.FILE_UPLOAD_FAILED,
+                                "File upload failed",
+                                HttpStatus.INTERNAL_SERVER_ERROR,
+                                e.getMessage());
+                };
+
+        HttpStatus status = mapping.status();
+        if (status.is5xxServerError()) {
+            log.error("{}: status={}", mapping.logTag(), status.value(), ex);
+        } else {
+            log.debug("{}: status={}", mapping.logTag(), status.value());
+        }
+
+        ProblemDetail pd = problemDetailFactory.build(mapping.typeSlug(), mapping.title(), status, mapping.detail());
+        return ResponseEntity.status(status).body(pd);
+    }
+}

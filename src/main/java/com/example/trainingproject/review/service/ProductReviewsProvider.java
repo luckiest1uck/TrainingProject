@@ -1,0 +1,140 @@
+package com.example.trainingproject.review.service;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.example.trainingproject.common.config.PaginationConfig;
+import com.example.trainingproject.common.pagination.PageRequestFactory;
+import com.example.trainingproject.openapi.dto.ProductReviewDto;
+import com.example.trainingproject.openapi.dto.ProductReviewRatingStats;
+import com.example.trainingproject.openapi.dto.ProductReviewsAndRatingsWithPagination;
+import com.example.trainingproject.openapi.dto.RatingMap;
+import com.example.trainingproject.review.converter.ProductReviewDtoConverter;
+import com.example.trainingproject.review.dto.ProductRatingCount;
+import com.example.trainingproject.review.entity.ProductReview;
+import com.example.trainingproject.review.exception.ReviewNotFoundException;
+import com.example.trainingproject.review.repository.ProductReviewRepository;
+import com.example.trainingproject.review.service.validator.GetReviewsRequestValidator;
+import com.example.trainingproject.review.service.validator.ProductReviewValidator;
+import com.example.trainingproject.user.api.UserLookupApi;
+import com.example.trainingproject.user.api.dto.UserLookupSnapshot;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ProductReviewsProvider {
+
+    private final ProductReviewRepository reviewRepository;
+    private final ProductReviewDtoConverter productReviewDtoConverter;
+    private final ProductReviewValidator productReviewValidator;
+    private final PaginationConfig paginationConfig;
+    private final UserLookupApi userLookupApi;
+
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, readOnly = true)
+    public ProductReviewsAndRatingsWithPagination getProductReviews(
+            final UUID productId,
+            final @Nullable Integer pageNumber,
+            final @Nullable Integer pageSize,
+            final @Nullable String sortAttribute,
+            final @Nullable String sortDirection,
+            final @Nullable List<Integer> productRatings) {
+        productReviewValidator.validateProductExists(productId);
+        var pageRequest =
+                buildValidatedReviewsPageRequest(pageNumber, pageSize, sortAttribute, sortDirection, productRatings);
+
+        var responsePage =
+                toProductReviewDto(reviewRepository.findAllProductReviews(productId, productRatings, pageRequest));
+        return productReviewDtoConverter.toProductReviewsAndRatingsWithPagination(responsePage);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, readOnly = true)
+    public ProductReviewDto getProductReviewForUser(final UUID productId, final UUID userId) {
+        productReviewValidator.validateProductExists(productId);
+        return reviewRepository
+                .findByUserIdAndProductId(userId, productId)
+                .map(this::toProductReviewDto)
+                .orElseThrow(() -> new ReviewNotFoundException(productId, userId));
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, readOnly = true)
+    public ProductReviewsAndRatingsWithPagination getUserReviews(
+            final UUID userId,
+            final @Nullable Integer pageNumber,
+            final @Nullable Integer pageSize,
+            final @Nullable String sortAttribute,
+            final @Nullable String sortDirection) {
+        var responsePage = toProductReviewDto(reviewRepository.findAllByUserId(
+                userId, buildValidatedReviewsPageRequest(pageNumber, pageSize, sortAttribute, sortDirection, null)));
+        return productReviewDtoConverter.toProductReviewsAndRatingsWithPagination(responsePage);
+    }
+
+    private org.springframework.data.domain.Page<ProductReviewDto> toProductReviewDto(
+            org.springframework.data.domain.Page<ProductReview> page) {
+        Set<UUID> userIds =
+                page.getContent().stream().map(ProductReview::getUserId).collect(Collectors.toSet());
+        if (userIds.isEmpty()) {
+            return page.map(productReview -> productReviewDtoConverter.toProductReviewDto(
+                    productReview, userLookupApi.getUserById(productReview.getUserId())));
+        }
+        Map<UUID, UserLookupSnapshot> usersById = userLookupApi.getUsersByIds(userIds).stream()
+                .collect(Collectors.toMap(UserLookupSnapshot::id, Function.identity()));
+        return page.map(productReview -> productReviewDtoConverter.toProductReviewDto(
+                productReview,
+                java.util.Optional.ofNullable(usersById.get(productReview.getUserId()))
+                        .orElseGet(() -> userLookupApi.getUserById(productReview.getUserId()))));
+    }
+
+    private ProductReviewDto toProductReviewDto(ProductReview productReview) {
+        return productReviewDtoConverter.toProductReviewDto(
+                productReview, userLookupApi.getUserById(productReview.getUserId()));
+    }
+
+    private org.springframework.data.domain.Pageable buildValidatedReviewsPageRequest(
+            @Nullable Integer pageNumber,
+            @Nullable Integer pageSize,
+            @Nullable String sortAttribute,
+            @Nullable String sortDirection,
+            @Nullable List<Integer> productRatings) {
+        int page = pageNumber != null ? pageNumber : paginationConfig.defaultPageNumber();
+        PaginationConfig.Reviews reviews = paginationConfig.reviews();
+        int size = pageSize != null ? pageSize : reviews.defaultPageSize();
+        String sortAttr = sortAttribute != null ? sortAttribute : reviews.defaultSortAttribute();
+        String sortDir = sortDirection != null ? sortDirection : reviews.defaultSortDirection();
+        GetReviewsRequestValidator.validate(page, size, sortAttr, sortDir, productRatings);
+        return PageRequestFactory.of(page, size, sortAttr, sortDir);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, readOnly = true)
+    public ProductReviewRatingStats getStatistics(final UUID productId) {
+        productReviewValidator.validateProductExists(productId);
+
+        Double avg = reviewRepository.getAvgRatingByProductId(productId);
+        double avgRating = avg != null ? avg : 0.0;
+        return new ProductReviewRatingStats(
+                productId,
+                Math.round(avgRating * 10.0) / 10.0,
+                reviewRepository.getReviewCountProductById(productId),
+                getProductRatingMap(productId));
+    }
+
+    private RatingMap getProductRatingMap(UUID productId) {
+        List<ProductRatingCount> productRatingCountPairs = reviewRepository.getRatingsMapByProductId(productId);
+        if (productRatingCountPairs == null) {
+            return new RatingMap();
+        }
+        return productReviewDtoConverter.convertToProductRatingMap(productRatingCountPairs);
+    }
+}

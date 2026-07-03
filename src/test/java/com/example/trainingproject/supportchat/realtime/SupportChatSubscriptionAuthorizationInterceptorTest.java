@@ -1,0 +1,197 @@
+package com.example.trainingproject.supportchat.realtime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import java.security.Principal;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.security.access.AccessDeniedException;
+
+import com.example.trainingproject.common.audit.Identifiable;
+import com.example.trainingproject.supportchat.entity.SupportConversationEntity;
+import com.example.trainingproject.supportchat.repository.SupportConversationRepository;
+import com.example.trainingproject.supportchat.service.SupportChatAvailabilityService;
+
+@DisplayName("SupportChatSubscriptionAuthorizationInterceptor unit tests")
+class SupportChatSubscriptionAuthorizationInterceptorTest {
+
+    private static final UUID USER_ID = UUID.randomUUID();
+    private static final UUID CONVERSATION_ID = UUID.randomUUID();
+
+    private final SupportChatAvailabilityService availabilityService = mock(SupportChatAvailabilityService.class);
+    private final SupportConversationRepository conversationRepository = mock(SupportConversationRepository.class);
+    private final MessageChannel channel = mock(MessageChannel.class);
+
+    @Test
+    @DisplayName("Allows owner of verified user's support chat conversation to subscribe")
+    void preSend_supportChatSubscriptionOwnedByEligibleUser_allowsSubscription() {
+        SupportConversationEntity conversation = conversation(USER_ID);
+        when(availabilityService.isEligible(USER_ID)).thenReturn(true);
+        when(conversationRepository.findById(CONVERSATION_ID)).thenReturn(Optional.of(conversation));
+
+        Message<?> message = subscriptionMessage(
+                SupportChatWebSocketDestinations.conversationMessages(CONVERSATION_ID), new PrincipalUser(USER_ID));
+
+        var result = enabledInterceptor().preSend(message, channel);
+
+        assertThat(result).isSameAs(message);
+    }
+
+    @Test
+    @DisplayName("Rejects support chat subscription for another user's conversation")
+    void preSend_supportChatSubscriptionForForeignConversation_rejectsSubscription() {
+        when(availabilityService.isEligible(USER_ID)).thenReturn(true);
+        when(conversationRepository.findById(CONVERSATION_ID)).thenReturn(Optional.of(conversation(UUID.randomUUID())));
+
+        Message<?> message = subscriptionMessage(
+                SupportChatWebSocketDestinations.conversationMessages(CONVERSATION_ID), new PrincipalUser(USER_ID));
+
+        assertThatThrownBy(() -> enabledInterceptor().preSend(message, channel))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("Rejects support chat subscription when user is not eligible")
+    void preSend_supportChatSubscriptionForUnverifiedUser_rejectsSubscription() {
+        when(availabilityService.isEligible(USER_ID)).thenReturn(false);
+
+        Message<?> message = subscriptionMessage(
+                SupportChatWebSocketDestinations.conversationMessages(CONVERSATION_ID), new PrincipalUser(USER_ID));
+
+        assertThatThrownBy(() -> enabledInterceptor().preSend(message, channel))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(conversationRepository);
+    }
+
+    @Test
+    @DisplayName("Ignores subscriptions outside support chat destinations")
+    void preSend_otherSubscription_ignoresDestination() {
+        Message<?> message = subscriptionMessage("/topic/products", new PrincipalUser(USER_ID));
+
+        var result = enabledInterceptor().preSend(message, channel);
+
+        assertThat(result).isSameAs(message);
+        verifyNoInteractions(availabilityService, conversationRepository);
+    }
+
+    @Test
+    @DisplayName("Rejects malformed subscriptions inside support chat destination namespace")
+    void preSend_malformedSupportChatSubscription_rejectsSubscription() {
+        Message<?> message =
+                subscriptionMessage("/topic/support-chat/conversations/not-a-uuid", new PrincipalUser(USER_ID));
+
+        assertThatThrownBy(() -> enabledInterceptor().preSend(message, channel))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(availabilityService, conversationRepository);
+    }
+
+    @Test
+    @DisplayName("Rejects support chat subscription when per-user session limit is reached")
+    void preSend_supportChatSubscriptionPastSessionLimit_rejectsSubscription() {
+        SupportConversationEntity conversation = conversation(USER_ID);
+        SupportChatWebSocketSessionRegistry sessionRegistry = new SupportChatWebSocketSessionRegistry(1);
+        SupportChatSubscriptionAuthorizationInterceptor interceptor =
+                new SupportChatSubscriptionAuthorizationInterceptor(
+                        availabilityService, conversationRepository, sessionRegistry);
+        when(availabilityService.isEligible(USER_ID)).thenReturn(true);
+        when(conversationRepository.findById(CONVERSATION_ID)).thenReturn(Optional.of(conversation));
+
+        interceptor.preSend(
+                subscriptionMessage(
+                        SupportChatWebSocketDestinations.conversationMessages(CONVERSATION_ID),
+                        new PrincipalUser(USER_ID),
+                        "session-1"),
+                channel);
+
+        assertThatThrownBy(() -> interceptor.preSend(
+                        subscriptionMessage(
+                                SupportChatWebSocketDestinations.conversationMessages(CONVERSATION_ID),
+                                new PrincipalUser(USER_ID),
+                                "session-2"),
+                        channel))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("Allows new support chat subscription after session disconnect")
+    void preSend_supportChatDisconnect_releasesSessionSlot() {
+        SupportConversationEntity conversation = conversation(USER_ID);
+        SupportChatWebSocketSessionRegistry sessionRegistry = new SupportChatWebSocketSessionRegistry(1);
+        SupportChatSubscriptionAuthorizationInterceptor interceptor =
+                new SupportChatSubscriptionAuthorizationInterceptor(
+                        availabilityService, conversationRepository, sessionRegistry);
+        when(availabilityService.isEligible(USER_ID)).thenReturn(true);
+        when(conversationRepository.findById(CONVERSATION_ID)).thenReturn(Optional.of(conversation));
+
+        interceptor.preSend(
+                subscriptionMessage(
+                        SupportChatWebSocketDestinations.conversationMessages(CONVERSATION_ID),
+                        new PrincipalUser(USER_ID),
+                        "session-1"),
+                channel);
+        interceptor.preSend(disconnectMessage(), channel);
+
+        Message<?> result = interceptor.preSend(
+                subscriptionMessage(
+                        SupportChatWebSocketDestinations.conversationMessages(CONVERSATION_ID),
+                        new PrincipalUser(USER_ID),
+                        "session-2"),
+                channel);
+
+        assertThat(result).isNotNull();
+    }
+
+    private SupportChatSubscriptionAuthorizationInterceptor enabledInterceptor() {
+        return new SupportChatSubscriptionAuthorizationInterceptor(
+                availabilityService, conversationRepository, new SupportChatWebSocketSessionRegistry(5));
+    }
+
+    private static Message<?> subscriptionMessage(String destination, Principal principal) {
+        return subscriptionMessage(destination, principal, "session-1");
+    }
+
+    private static Message<?> subscriptionMessage(String destination, Principal principal, String sessionId) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        accessor.setDestination(destination);
+        accessor.setUser(principal);
+        accessor.setSessionId(sessionId);
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private static Message<?> disconnectMessage() {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.DISCONNECT);
+        accessor.setSessionId("session-1");
+        return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+    }
+
+    private static SupportConversationEntity conversation(UUID userId) {
+        SupportConversationEntity conversation = new SupportConversationEntity();
+        conversation.setId(CONVERSATION_ID);
+        conversation.setUserId(userId);
+        return conversation;
+    }
+
+    private record PrincipalUser(UUID userId) implements Principal, Identifiable {
+        @Override
+        public String getName() {
+            return userId.toString();
+        }
+
+        @Override
+        public UUID getId() {
+            return userId;
+        }
+    }
+}

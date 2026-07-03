@@ -1,0 +1,351 @@
+package com.example.trainingproject.security.session.management;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
+
+import com.example.trainingproject.security.jwt.config.JwtProperties;
+import com.example.trainingproject.security.jwt.exception.JwtTokenBlacklistedException;
+import com.example.trainingproject.security.session.entity.AuthSessionEntity;
+import com.example.trainingproject.security.session.repository.AuthSessionRepository;
+import com.example.trainingproject.security.signin.exception.SessionNotFoundException;
+import com.example.trainingproject.security.signin.exception.SessionOwnershipException;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("AuthSessionService unit tests")
+class AuthSessionServiceTest {
+
+    @Mock
+    private AuthSessionRepository sessionRepository;
+
+    @Mock
+    private JwtProperties jwtProperties;
+
+    @InjectMocks
+    private AuthSessionService service;
+
+    private static final AuthSessionRequestMetadata REQUEST_METADATA =
+            new AuthSessionRequestMetadata("TestAgent", "127.0.0.1");
+
+    @Test
+    @DisplayName("createSession saves and returns entity")
+    void createSessionSavesEntity() {
+        when(jwtProperties.refreshExpiration()).thenReturn(Duration.ofDays(1));
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AuthSessionEntity saved =
+                AuthSessionEntity.builder().id(sessionId).userId(userId).build();
+        when(sessionRepository.save(any())).thenReturn(saved);
+
+        AuthSessionEntity result = service.createSession(sessionId, userId, "hash123", REQUEST_METADATA);
+
+        assertThat(result.getId()).isEqualTo(sessionId);
+        verify(sessionRepository).save(any(AuthSessionEntity.class));
+    }
+
+    @Test
+    @DisplayName("createSession logs a masked session identifier")
+    void createSessionLogsMaskedSessionIdentifier() {
+        ListAppender<ILoggingEvent> appender = attachAppender();
+        when(jwtProperties.refreshExpiration()).thenReturn(Duration.ofDays(1));
+        UUID sessionId = UUID.fromString("12345678-1234-5678-1234-567812345678");
+        UUID userId = UUID.randomUUID();
+
+        service.createSession(sessionId, userId, "hash123", REQUEST_METADATA);
+
+        assertThat(appender.list)
+                .filteredOn(event -> event.getFormattedMessage().startsWith("auth.session.created"))
+                .singleElement()
+                .satisfies(event -> {
+                    assertThat(event.getLevel()).isEqualTo(Level.INFO);
+                    assertThat(event.getFormattedMessage()).contains("123456****");
+                    assertThat(event.getFormattedMessage()).doesNotContain(sessionId.toString());
+                });
+    }
+
+    @Test
+    @DisplayName("revokeByRefreshTokenHash revokes existing session")
+    void revokeByRefreshTokenHashRevokesSession() {
+        AuthSessionEntity session =
+                AuthSessionEntity.builder().id(UUID.randomUUID()).build();
+        when(sessionRepository.findByRefreshTokenHashForUpdate("hash")).thenReturn(Optional.of(session));
+
+        service.revokeByRefreshTokenHash("hash");
+
+        assertThat(session.getRevokedAt()).isNotNull();
+        verify(sessionRepository).save(session);
+        verify(sessionRepository).findByRefreshTokenHashForUpdate("hash");
+    }
+
+    @Test
+    @DisplayName("revokeByRefreshTokenHash does nothing when session not found")
+    void revokeByRefreshTokenHashNoOpWhenNotFound() {
+        when(sessionRepository.findByRefreshTokenHashForUpdate("missing")).thenReturn(Optional.empty());
+        service.revokeByRefreshTokenHash("missing");
+        verify(sessionRepository, never()).save(any());
+        verify(sessionRepository).findByRefreshTokenHashForUpdate("missing");
+    }
+
+    @Test
+    @DisplayName("revokeAllForUser delegates to repository")
+    void revokeAllForUserDelegatesToRepository() {
+        UUID userId = UUID.randomUUID();
+        service.revokeAllForUser(userId);
+        verify(sessionRepository).revokeAllByUserId(eq(userId), any(OffsetDateTime.class));
+        verify(sessionRepository, never()).markCompromisedAndRevokeAllByUserId(any(), any());
+    }
+
+    @Test
+    @DisplayName("revokeById revokes session belonging to user")
+    void revokeByIdRevokesOwnSession() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AuthSessionEntity session =
+                AuthSessionEntity.builder().id(sessionId).userId(userId).build();
+        when(sessionRepository.findByIdForUpdate(sessionId)).thenReturn(Optional.of(session));
+
+        service.revokeById(sessionId, userId);
+
+        assertThat(session.getRevokedAt()).isNotNull();
+        verify(sessionRepository).save(session);
+        verify(sessionRepository).findByIdForUpdate(sessionId);
+    }
+
+    @Test
+    @DisplayName("revokeById throws when session not found")
+    void revokeByIdThrowsWhenNotFound() {
+        UUID sessionId = UUID.randomUUID();
+        when(sessionRepository.findByIdForUpdate(sessionId)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.revokeById(sessionId, UUID.randomUUID()))
+                .isInstanceOf(SessionNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("revokeById throws when session belongs to different user")
+    void revokeByIdThrowsWhenWrongUser() {
+        UUID sessionId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID requesterId = UUID.randomUUID();
+        AuthSessionEntity session =
+                AuthSessionEntity.builder().id(sessionId).userId(ownerId).build();
+        when(sessionRepository.findByIdForUpdate(sessionId)).thenReturn(Optional.of(session));
+
+        assertThatThrownBy(() -> service.revokeById(sessionId, requesterId))
+                .isInstanceOf(SessionOwnershipException.class);
+    }
+
+    @Test
+    @DisplayName("listActiveSessions delegates to repository")
+    void listActiveSessionsDelegatesToRepository() {
+        UUID userId = UUID.randomUUID();
+        List<AuthSessionEntity> sessions =
+                List.of(AuthSessionEntity.builder().id(UUID.randomUUID()).build());
+        when(sessionRepository.findActiveSessions(eq(userId), any(OffsetDateTime.class)))
+                .thenReturn(sessions);
+
+        assertThat(service.listActiveSessions(userId)).isEqualTo(sessions);
+    }
+
+    @Test
+    @DisplayName("findActiveByHash throws when previous token hash found (replay attack)")
+    void findActiveByHashThrowsOnReplayAttack() {
+        AuthSessionEntity compromised = AuthSessionEntity.builder()
+                .id(UUID.randomUUID())
+                .userId(UUID.randomUUID())
+                .compromised(false)
+                .build();
+        when(sessionRepository.findByRefreshTokenHashForUpdate("oldHash")).thenReturn(Optional.empty());
+        when(sessionRepository.findByPreviousTokenHashForUpdate("oldHash")).thenReturn(Optional.of(compromised));
+
+        assertThatThrownBy(() -> service.findActiveByHash("oldHash"))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("rotated");
+
+        assertThat(compromised.isCompromised()).isTrue();
+        verify(sessionRepository).markCompromisedAndRevokeAllByUserId(eq(compromised.getUserId()), any());
+    }
+
+    @Test
+    @DisplayName("findActiveByHash on repeated replay does not revoke all again")
+    void findActiveByHashDoesNotRevokeAllAgainForRepeatedReplay() {
+        AuthSessionEntity compromised = AuthSessionEntity.builder()
+                .id(UUID.randomUUID())
+                .userId(UUID.randomUUID())
+                .compromised(true)
+                .revokedAt(OffsetDateTime.now().minusMinutes(5))
+                .build();
+        when(sessionRepository.findByRefreshTokenHashForUpdate("oldHash")).thenReturn(Optional.empty());
+        when(sessionRepository.findByPreviousTokenHashForUpdate("oldHash")).thenReturn(Optional.of(compromised));
+
+        assertThatThrownBy(() -> service.findActiveByHash("oldHash"))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("rotated");
+
+        verify(sessionRepository, never()).save(any(AuthSessionEntity.class));
+        verify(sessionRepository, never()).revokeAllByUserId(any(UUID.class), any(OffsetDateTime.class));
+        verify(sessionRepository, never()).markCompromisedAndRevokeAllByUserId(any(), any());
+    }
+
+    @Test
+    @DisplayName("findActiveByHash throws when session not found")
+    void findActiveByHashThrowsWhenNotFound() {
+        when(sessionRepository.findByRefreshTokenHashForUpdate("hash")).thenReturn(Optional.empty());
+        when(sessionRepository.findByPreviousTokenHashForUpdate("hash")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.findActiveByHash("hash"))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("not found");
+    }
+
+    @Test
+    @DisplayName("findActiveByHash throws when session is revoked")
+    void findActiveByHashThrowsWhenRevoked() {
+        AuthSessionEntity revoked = AuthSessionEntity.builder()
+                .id(UUID.randomUUID())
+                .userId(UUID.randomUUID())
+                .revokedAt(OffsetDateTime.now().minusHours(1))
+                .expiresAt(OffsetDateTime.now().plusDays(1))
+                .compromised(false)
+                .build();
+        when(sessionRepository.findByRefreshTokenHashForUpdate("hash")).thenReturn(Optional.of(revoked));
+
+        assertThatThrownBy(() -> service.findActiveByHash("hash"))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("revoked");
+    }
+
+    @Test
+    @DisplayName("findActiveByHash marks reused revoked session as compromised and revokes all sessions")
+    void findActiveByHashMarksRevokedSessionAsCompromisedAndRevokesAll() {
+        UUID userId = UUID.randomUUID();
+        AuthSessionEntity revoked = AuthSessionEntity.builder()
+                .id(UUID.randomUUID())
+                .userId(userId)
+                .revokedAt(OffsetDateTime.now().minusHours(1))
+                .expiresAt(OffsetDateTime.now().plusDays(1))
+                .compromised(false)
+                .build();
+        when(sessionRepository.findByRefreshTokenHashForUpdate("hash")).thenReturn(Optional.of(revoked));
+
+        assertThatThrownBy(() -> service.findActiveByHash("hash"))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("revoked");
+
+        assertThat(revoked.isCompromised()).isTrue();
+        verify(sessionRepository).save(revoked);
+        verify(sessionRepository).markCompromisedAndRevokeAllByUserId(eq(userId), any(OffsetDateTime.class));
+    }
+
+    @Test
+    @DisplayName("findActiveByHash throws when session is expired")
+    void findActiveByHashThrowsWhenExpired() {
+        AuthSessionEntity expired = AuthSessionEntity.builder()
+                .id(UUID.randomUUID())
+                .userId(UUID.randomUUID())
+                .expiresAt(OffsetDateTime.now().minusHours(1))
+                .compromised(false)
+                .build();
+        when(sessionRepository.findByRefreshTokenHashForUpdate("hash")).thenReturn(Optional.of(expired));
+
+        assertThatThrownBy(() -> service.findActiveByHash("hash"))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("expired");
+    }
+
+    @Test
+    @DisplayName("findActiveByHash returns active session")
+    void findActiveByHashReturnsActiveSession() {
+        AuthSessionEntity active = AuthSessionEntity.builder()
+                .id(UUID.randomUUID())
+                .userId(UUID.randomUUID())
+                .expiresAt(OffsetDateTime.now().plusDays(1))
+                .compromised(false)
+                .build();
+        when(sessionRepository.findByRefreshTokenHashForUpdate("hash")).thenReturn(Optional.of(active));
+
+        assertThat(service.findActiveByHash("hash")).isEqualTo(active);
+    }
+
+    @Test
+    @DisplayName("rotateSession updates hashes and timestamps")
+    void rotateSessionUpdatesSession() {
+        when(jwtProperties.refreshExpiration()).thenReturn(Duration.ofDays(1));
+        AuthSessionEntity active = AuthSessionEntity.builder()
+                .id(UUID.randomUUID())
+                .userId(UUID.randomUUID())
+                .expiresAt(OffsetDateTime.now().plusDays(1))
+                .compromised(false)
+                .build();
+        service.rotateSession(active, "oldHash", "newHash");
+
+        assertThat(active.getRefreshTokenHash()).isEqualTo("newHash");
+        assertThat(active.getPreviousTokenHash()).isEqualTo("oldHash");
+        verify(sessionRepository, atLeastOnce()).save(active);
+    }
+
+    @Test
+    @DisplayName("revokeAllForCompromisedUserBySessionId marks sessions compromised only for active session")
+    void revokeAllForCompromisedUserBySessionIdMarksCompromisedOnlyForActiveSession() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        AuthSessionEntity active = AuthSessionEntity.builder()
+                .id(sessionId)
+                .userId(userId)
+                .compromised(false)
+                .revokedAt(null)
+                .build();
+        when(sessionRepository.findByIdForUpdate(sessionId)).thenReturn(Optional.of(active));
+
+        service.revokeAllForCompromisedUserBySessionId(sessionId);
+
+        verify(sessionRepository).markCompromisedAndRevokeAllByUserId(eq(userId), any(OffsetDateTime.class));
+        verify(sessionRepository, never()).revokeAllByUserId(any(UUID.class), any(OffsetDateTime.class));
+    }
+
+    @Test
+    @DisplayName("revokeAllForCompromisedUserBySessionId does nothing for compromised session")
+    void revokeAllForCompromisedUserBySessionIdNoOpForCompromisedSession() {
+        UUID sessionId = UUID.randomUUID();
+        AuthSessionEntity compromised = AuthSessionEntity.builder()
+                .id(sessionId)
+                .userId(UUID.randomUUID())
+                .compromised(true)
+                .build();
+        when(sessionRepository.findByIdForUpdate(sessionId)).thenReturn(Optional.of(compromised));
+
+        service.revokeAllForCompromisedUserBySessionId(sessionId);
+
+        verify(sessionRepository, never()).revokeAllByUserId(any(UUID.class), any(OffsetDateTime.class));
+        verify(sessionRepository, never()).markCompromisedAndRevokeAllByUserId(any(), any());
+    }
+
+    private static ListAppender<ILoggingEvent> attachAppender() {
+        Logger logger = (Logger) LoggerFactory.getLogger(AuthSessionService.class);
+        logger.setLevel(Level.INFO);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        return appender;
+    }
+}

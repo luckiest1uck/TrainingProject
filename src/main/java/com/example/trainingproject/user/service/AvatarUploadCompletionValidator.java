@@ -1,0 +1,106 @@
+package com.example.trainingproject.user.service;
+
+import java.util.Locale;
+
+import org.jspecify.annotations.Nullable;
+import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
+
+import com.example.trainingproject.common.exception.BadRequestException;
+import com.example.trainingproject.user.config.AvatarUploadProperties;
+import com.example.trainingproject.user.exception.InvalidAvatarFileTypeException;
+
+import lombok.RequiredArgsConstructor;
+
+@Component
+@RequiredArgsConstructor
+public class AvatarUploadCompletionValidator {
+
+    private static final int SHA256_HEX_LENGTH = 64;
+    private final AvatarUploadSourceObjectValidator sourceObjectValidator;
+    private final AvatarUploadProperties properties;
+
+    public AvatarUploadCompletion validate(@Nullable AvatarUploadCompletionCommand command) {
+        if (command == null) {
+            throw new BadRequestException("Avatar upload completion is required.");
+        }
+
+        ValidAvatarUploadSourceObject source = sourceObjectValidator.validate(command.sourceObject());
+        String processedBucket = validateRequiredText(command.processedBucket(), "processedBucket");
+        validateProcessedBucket(processedBucket);
+        String processedKey = validateRequiredText(command.processedKey(), "processedKey");
+        String contentType = validateContentType(command.contentType());
+        validateProcessedKey(source, processedKey);
+        int width = positiveInt(command.width(), "width");
+        int height = positiveInt(command.height(), "height");
+        long originalSizeBytes = positiveLong(command.originalSizeBytes(), "originalSizeBytes");
+        long processedSizeBytes = positiveLong(command.processedSizeBytes(), "processedSizeBytes");
+        String sha256 = validateSha256(command.sha256());
+
+        return new AvatarUploadCompletion(
+                source,
+                processedBucket,
+                processedKey,
+                contentType,
+                width,
+                height,
+                originalSizeBytes,
+                processedSizeBytes,
+                sha256);
+    }
+
+    private String validateContentType(@Nullable String contentType) {
+        String validatedContentType = validateRequiredText(contentType, "contentType");
+        if (!AvatarContentTypes.ALLOWED_CONTENT_TYPES.contains(validatedContentType)) {
+            throw new InvalidAvatarFileTypeException(validatedContentType, AvatarContentTypes.ALLOWED_CONTENT_TYPES);
+        }
+        return validatedContentType;
+    }
+
+    private void validateProcessedKey(ValidAvatarUploadSourceObject source, String processedKey) {
+        String expectedPrefix = AvatarUploadStorageLayout.processedPrefix(source.userId(), source.uploadId());
+        if (!processedKey.startsWith(expectedPrefix)) {
+            throw new BadRequestException("Avatar upload completion processedKey does not match source metadata.");
+        }
+    }
+
+    private void validateProcessedBucket(String processedBucket) {
+        if (!properties.processedBucket().equals(processedBucket)) {
+            throw new BadRequestException("Avatar upload completion processedBucket is invalid.");
+        }
+    }
+
+    private int positiveInt(@Nullable Integer value, String fieldName) {
+        if (value == null || value < 1) {
+            throw new BadRequestException("Avatar upload completion " + fieldName + " must be positive.");
+        }
+        return value;
+    }
+
+    private long positiveLong(@Nullable Long value, String fieldName) {
+        if (value == null || value < 1) {
+            throw new BadRequestException("Avatar upload completion " + fieldName + " must be positive.");
+        }
+        return value;
+    }
+
+    private String validateSha256(@Nullable String sha256) {
+        String validatedSha256 = validateRequiredText(sha256, "sha256");
+        if (validatedSha256.length() != SHA256_HEX_LENGTH
+                || !validatedSha256.chars().allMatch(this::isHexDigit)) {
+            throw new BadRequestException("Avatar upload completion sha256 is invalid.");
+        }
+        return validatedSha256.toLowerCase(Locale.ROOT);
+    }
+
+    private boolean isHexDigit(int value) {
+        return (value >= '0' && value <= '9') || (value >= 'a' && value <= 'f') || (value >= 'A' && value <= 'F');
+    }
+
+    private String validateRequiredText(@Nullable String value, String fieldName) {
+        if (!StringUtils.hasText(value)) {
+            throw new BadRequestException("Avatar upload completion " + fieldName + " is required.");
+        }
+        return value;
+    }
+}

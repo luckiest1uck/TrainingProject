@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "productReviewId": {
+      "type": ["string", "null"]
+    },
+    "text": {
+      "type": ["string", "null"]
+    },
+    "createdAt": {
+      "type": ["string", "null"]
+    },
+    "rating": {
+      "type": ["number", "null"]
+    },
+    "userName": {
+      "type": ["string", "null"]
+    },
+    "userLastname": {
+      "type": ["string", "null"]
+    }
+  }
+}

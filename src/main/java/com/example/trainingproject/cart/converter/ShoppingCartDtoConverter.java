@@ -1,0 +1,112 @@
+package com.example.trainingproject.cart.converter;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+
+import com.example.trainingproject.cart.api.dto.CartItemSnapshot;
+import com.example.trainingproject.cart.api.dto.CartSnapshot;
+import com.example.trainingproject.cart.entity.ShoppingCart;
+import com.example.trainingproject.cart.entity.ShoppingCartItem;
+import com.example.trainingproject.cart.exception.CartProductSnapshotMissingException;
+import com.example.trainingproject.openapi.dto.ProductSummaryDto;
+import com.example.trainingproject.openapi.dto.ShoppingCartDto;
+import com.example.trainingproject.openapi.dto.ShoppingCartItemDto;
+import com.example.trainingproject.product.api.dto.ProductSnapshot;
+
+import lombok.experimental.UtilityClass;
+
+@UtilityClass
+public class ShoppingCartDtoConverter {
+
+    public static ShoppingCartDto toDto(final ShoppingCart cart, final Map<UUID, ProductSnapshot> productsById) {
+        String errorMessage = "Cart items must not be null";
+        Set<ShoppingCartItem> cartItems = cart.getItems();
+
+        List<ShoppingCartItemDto> itemDtos = Objects.requireNonNull(cartItems, errorMessage).stream()
+                .map(item -> {
+                    var product = requireProductSnapshot(item, productsById);
+                    return toItemDto(item, product);
+                })
+                .toList();
+
+        BigDecimal itemsTotalPrice = itemDtos.stream()
+                .map(item -> item.getProductInfo().getPrice().multiply(BigDecimal.valueOf(item.getProductQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        int itemsQuantity = itemDtos.size();
+        int productsQuantity = itemDtos.stream()
+                .mapToInt(ShoppingCartItemDto::getProductQuantity)
+                .sum();
+
+        return new ShoppingCartDto()
+                .id(cart.getId())
+                .userId(cart.getUserId())
+                .items(itemDtos)
+                .itemsTotalPrice(itemsTotalPrice)
+                .itemsQuantity(itemsQuantity)
+                .productsQuantity(productsQuantity)
+                .createdAt(cart.getCreatedAt())
+                .closedAt(cart.getClosedAt());
+    }
+
+    private static ShoppingCartItemDto toItemDto(ShoppingCartItem item, ProductSnapshot productInfo) {
+        return new ShoppingCartItemDto()
+                .id(item.getId())
+                .productInfo(toSummaryDto(productInfo))
+                .productQuantity(item.getProductQuantity());
+    }
+
+    private static ProductSummaryDto toSummaryDto(ProductSnapshot productInfo) {
+        return new ProductSummaryDto()
+                .id(productInfo.id())
+                .name(productInfo.name())
+                .description(productInfo.description())
+                .price(productInfo.price())
+                .productFileUrl(productInfo.productFileUrl())
+                .averageRating(productInfo.averageRating())
+                .reviewsCount(productInfo.reviewsCount())
+                .brandName(productInfo.brandName())
+                .sellerName(productInfo.sellerName())
+                .weight(productInfo.weight());
+    }
+
+    public static CartSnapshot toSnapshot(final ShoppingCart cart, final Map<UUID, ProductSnapshot> productsById) {
+        String errorMessage = "Cart items must not be null";
+        List<CartItemSnapshot> items = Objects.requireNonNull(cart.getItems(), errorMessage).stream()
+                .map(item -> {
+                    var product = requireProductSnapshot(item, productsById);
+                    return new CartItemSnapshot(item.getId(), product, item.getProductQuantity());
+                })
+                .toList();
+
+        BigDecimal totalPrice = items.stream()
+                .map(item -> item.product().price().multiply(BigDecimal.valueOf(item.productQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        int productsQuantity =
+                items.stream().mapToInt(CartItemSnapshot::productQuantity).sum();
+
+        return new CartSnapshot(
+                cart.getId(),
+                cart.getUserId(),
+                items,
+                items.size(),
+                totalPrice,
+                productsQuantity,
+                cart.getCreatedAt(),
+                cart.getClosedAt());
+    }
+
+    private static ProductSnapshot requireProductSnapshot(
+            ShoppingCartItem item, Map<UUID, ProductSnapshot> productsById) {
+        ProductSnapshot product = productsById.get(item.getProductId());
+        if (product == null) {
+            throw new CartProductSnapshotMissingException(item.getProductId());
+        }
+        return product;
+    }
+}

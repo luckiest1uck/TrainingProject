@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "userId": {
+      "type": "string"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "productInfo": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "price": {
+                "type": "number"
+              },
+              "productFileUrl": {
+                "type": ["string", "null"]
+              }
+            },
+            "required": ["id", "name", "price"]
+          },
+          "productQuantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99
+          }
+        },
+        "required": ["id", "productInfo", "productQuantity"]
+      }
+    },
+    "itemsQuantity": {
+      "type": "integer"
+    },
+    "productsQuantity": {
+      "type": "integer"
+    },
+    "itemsTotalPrice": {
+      "type": "number"
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "closedAt": {
+      "type": ["string", "null"]
+    }
+  },
+  "required": ["id", "userId", "items", "itemsQuantity", "itemsTotalPrice", "productsQuantity", "createdAt"]
+}

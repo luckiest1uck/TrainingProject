@@ -1,0 +1,48 @@
+package com.example.trainingproject.common.monitoring;
+
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Aspect
+@Component
+@ConditionalOnProperty(name = "monitoring.slow-query.enabled", havingValue = "true", matchIfMissing = true)
+public class SlowQueryAspect {
+
+    @Value("${monitoring.slow-query-threshold-ms:200}")
+    private long thresholdMs;
+
+    @Around("within(@org.springframework.stereotype.Repository *)")
+    @SuppressWarnings("unused") // invoked by AOP proxy at runtime
+    public Object track(ProceedingJoinPoint pjp) throws Throwable {
+        long start = System.currentTimeMillis();
+        try {
+            return pjp.proceed();
+        } finally {
+            long elapsed = System.currentTimeMillis() - start;
+            if (elapsed >= thresholdMs) {
+                String methodName = pjp.getSignature().getName();
+                String operationType = methodName.startsWith("save")
+                                || methodName.startsWith("delete")
+                                || methodName.startsWith("update")
+                        ? "write"
+                        : "read";
+                String logMessage =
+                        "db.slow_query: repository={}, method={}, operation_type={}, duration_ms={}, threshold_ms={}";
+                log.warn(
+                        logMessage,
+                        pjp.getSignature().getDeclaringType().getSimpleName(),
+                        methodName,
+                        operationType,
+                        elapsed,
+                        thresholdMs);
+            }
+        }
+    }
+}

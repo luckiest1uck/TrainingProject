@@ -1,0 +1,51 @@
+package com.example.trainingproject.test.config;
+
+import static io.restassured.RestAssured.given;
+
+import java.io.IOException;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.github.fge.jackson.JsonLoader;
+import com.example.trainingproject.common.http.ApiPaths;
+
+import io.restassured.http.ContentType;
+import io.restassured.response.Response;
+
+public class RestUtils {
+
+    private static final String AUTHENTICATE_TEMPLATE = "/security/model/authenticate-template.json";
+
+    public static String getJwtToken(Integer port, String email, String password) {
+        var specification = given().port(port)
+                .basePath(ApiPaths.AUTH)
+                .contentType(ContentType.JSON)
+                .accept(ContentType.JSON);
+
+        String body = getRequestBody(AUTHENTICATE_TEMPLATE).formatted(email, password);
+
+        Response response = given(specification).body(body).post("/authenticate");
+
+        String jwtToken = response.getBody().jsonPath().getString("token");
+
+        if (isJwtTokenNotValid(jwtToken)) {
+            throw new IllegalArgumentException("JWT Token is empty or null. Test failed."
+                    + " HTTP " + response.getStatusCode()
+                    + ": " + response.getBody().asString());
+        }
+
+        return jwtToken;
+    }
+
+    private static boolean isJwtTokenNotValid(String jwtToken) {
+        return jwtToken == null || jwtToken.isEmpty();
+    }
+
+    public static String getRequestBody(String resourcePath) {
+        try {
+            JsonNode json = JsonLoader.fromResource(resourcePath);
+            return json.toString();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}

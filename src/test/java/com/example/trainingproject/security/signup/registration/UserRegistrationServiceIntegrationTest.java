@@ -1,0 +1,83 @@
+package com.example.trainingproject.security.signup.registration;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import com.example.trainingproject.openapi.dto.UserRegistrationRequest;
+import com.example.trainingproject.security.session.management.AuthSessionRequestMetadata;
+import com.example.trainingproject.security.session.token.AuthenticationTokens;
+import com.example.trainingproject.security.signin.exception.UserRegistrationException;
+import com.example.trainingproject.test.config.IntegrationTestBase;
+import com.example.trainingproject.user.entity.UserEntity;
+import com.example.trainingproject.user.repository.UserRepository;
+
+@DisplayName("UserRegistrationService Integration Tests")
+class UserRegistrationServiceIntegrationTest extends IntegrationTestBase {
+
+    @Autowired
+    private UserRegistrationService userRegistrationService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    private static final AuthSessionRequestMetadata REQUEST_METADATA =
+            new AuthSessionRequestMetadata("TestAgent", "127.0.0.1");
+
+    @Test
+    @DisplayName("Should successfully register new user with valid data")
+    void shouldRegisterNewUserSuccessfully() {
+        final UserRegistrationRequest request =
+                new UserRegistrationRequest("John", "Doe", "john.doe@example.com", "Password123!");
+
+        final AuthenticationTokens response = userRegistrationService.register(request, REQUEST_METADATA);
+        assertNotNull(response.accessToken());
+        assertNotNull(response.refreshToken());
+
+        final UserEntity savedUser = userRepository
+                .findByEmailWithAuthorities("john.doe@example.com")
+                .orElse(null);
+        assertNotNull(savedUser);
+        assertEquals("John", savedUser.getFirstName());
+        assertEquals("Doe", savedUser.getLastName());
+        assertEquals("john.doe@example.com", savedUser.getEmail());
+        assertTrue(savedUser.isAccountNonExpired());
+        assertTrue(savedUser.isAccountNonLocked());
+        assertTrue(savedUser.isCredentialsNonExpired());
+        assertTrue(savedUser.isEnabled());
+        assertFalse(savedUser.getAuthorities().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Should throw exception when registering user with existing email")
+    void shouldThrowExceptionForDuplicateEmail() {
+        final UserRegistrationRequest firstRequest =
+                new UserRegistrationRequest("John", "Doe", "duplicate@example.com", "Password123!");
+        userRegistrationService.register(firstRequest, REQUEST_METADATA);
+
+        final UserRegistrationRequest duplicateRequest =
+                new UserRegistrationRequest("Jane", "Smith", "duplicate@example.com", "Password456!");
+
+        assertThrows(
+                UserRegistrationException.class,
+                () -> userRegistrationService.register(duplicateRequest, REQUEST_METADATA));
+    }
+
+    @Test
+    @DisplayName("Should return false for existing email availability check")
+    void shouldReturnFalseForExistingEmail() {
+        final UserRegistrationRequest request =
+                new UserRegistrationRequest("John", "Doe", "existing@example.com", "Password123!");
+        userRegistrationService.register(request, REQUEST_METADATA);
+
+        assertTrue(userRepository.findByEmail("existing@example.com").isPresent());
+    }
+
+    @Test
+    @DisplayName("Should return true for non-existing email availability check")
+    void shouldReturnTrueForNonExistingEmail() {
+        assertTrue(userRepository.findByEmail("nonexisting@example.com").isEmpty());
+    }
+}

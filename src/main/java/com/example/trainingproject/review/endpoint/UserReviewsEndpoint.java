@@ -1,0 +1,80 @@
+package com.example.trainingproject.review.endpoint;
+
+import java.util.UUID;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.example.trainingproject.common.http.ApiPaths;
+import com.example.trainingproject.common.util.ClientIpExtractor;
+import com.example.trainingproject.openapi.dto.ProductReviewDto;
+import com.example.trainingproject.openapi.dto.ProductReviewRequest;
+import com.example.trainingproject.openapi.dto.ProductReviewsAndRatingsWithPagination;
+import com.example.trainingproject.openapi.product.review.api.UserReviewsApi;
+import com.example.trainingproject.review.service.ProductReviewManager;
+import com.example.trainingproject.review.service.ProductReviewsProvider;
+import com.example.trainingproject.security.api.CurrentUserProvider;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@RestController
+@RequiredArgsConstructor
+@Validated
+public class UserReviewsEndpoint implements UserReviewsApi {
+
+    private final ProductReviewManager productReviewService;
+    private final ProductReviewsProvider productReviewsProvider;
+    private final CurrentUserProvider currentUserProvider;
+    private final HttpServletRequest httpRequest;
+    private final ClientIpExtractor clientIpExtractor;
+
+    @Override
+    @PostMapping(ApiPaths.PRODUCTS + "/{productId}/reviews")
+    public ResponseEntity<ProductReviewDto> addNewProductReview(
+            @PathVariable UUID productId, @Valid @RequestBody ProductReviewRequest productReviewRequest) {
+        UUID userId = currentUserProvider.getUserId();
+        var review = productReviewService.create(
+                productId, userId, productReviewRequest, clientIpExtractor.extract(httpRequest));
+        log.info("review.created: reviewId={}, productId={}", review.getProductReviewId(), productId);
+        return ResponseEntity.ok(review);
+    }
+
+    @Override
+    @DeleteMapping(ApiPaths.PRODUCTS + "/{productId}/reviews/{productReviewId}")
+    public ResponseEntity<Void> deleteProductReview(@PathVariable UUID productId, @PathVariable UUID productReviewId) {
+        UUID userId = currentUserProvider.getUserId();
+        productReviewService.delete(productId, productReviewId, userId);
+        log.info("review.deleted: reviewId={}", productReviewId);
+        return ResponseEntity.ok().build();
+    }
+
+    @Override
+    @GetMapping(ApiPaths.PRODUCTS + "/{productId}/review")
+    public ResponseEntity<ProductReviewDto> getProductReview(@PathVariable UUID productId) {
+        return ResponseEntity.ok(
+                productReviewsProvider.getProductReviewForUser(productId, currentUserProvider.getUserId()));
+    }
+
+    @Override
+    @GetMapping(ApiPaths.USERS + "/reviews")
+    public ResponseEntity<ProductReviewsAndRatingsWithPagination> getUserReviews(
+            @RequestParam(name = "page", required = false, defaultValue = "0") Integer pageNumber,
+            @RequestParam(name = "size", required = false, defaultValue = "50") Integer pageSize,
+            @RequestParam(name = "sort_attribute", required = false, defaultValue = "createdAt") String sortAttribute,
+            @RequestParam(name = "sort_direction", required = false, defaultValue = "asc") String sortDirection) {
+        return ResponseEntity.ok(productReviewsProvider.getUserReviews(
+                currentUserProvider.getUserId(), pageNumber, pageSize, sortAttribute, sortDirection));
+    }
+}

@@ -1,0 +1,62 @@
+# =============================================================================
+# Version control and repository metadata
+# =============================================================================
+.git/
+.gitignore
+.gitguardian.yml
+
+# =============================================================================
+# Local editor / IDE files
+# =============================================================================
+.idea/
+.vscode/
+*.iml
+
+# AI/editor helper metadata
+.amazonq/
+
+# CI configuration is not needed in the image build context.
+.github/
+
+# Compose files are runtime orchestration files, not build inputs.
+docker-compose*.yml
+docker-compose*.yaml
+
+# Environment files should stay local and be injected at runtime.
+.env
+.env.*
+.env.local
+local.env
+
+# Private project material should never be shipped in application image contexts.
+maintaner/
+
+# Tests are not needed for packaging the production image.
+src/test/
+
+# Build output and backup metadata
+target/
+**/pom.xml.versionsBackup
+**/pom.xml.tag
+**/pom.xml.releaseBackup
+**/pom.xml.next
+**/pom.xml.backup
+**/.mvn/wrapper/maven-wrapper.jar
+
+# Docs are useful in the repo, but not required inside the application image.
+docs/
+*.md
+
+# OS-specific noise
+.DS_Store
+Thumbs.db
+
+# Runtime logs should not be copied into a fresh image.
+logs/
+*.log
+
+# Optional observability support files
+ops/observability/
+
+# Local seed assets are uploaded separately and do not belong in the image.
+seed/

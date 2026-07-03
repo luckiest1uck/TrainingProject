@@ -1,0 +1,126 @@
+package com.example.trainingproject.cart.stub;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import com.example.trainingproject.cart.entity.ShoppingCart;
+import com.example.trainingproject.cart.entity.ShoppingCartItem;
+import com.example.trainingproject.product.api.dto.ProductSnapshot;
+
+public class CartDtoTestStub {
+
+    public static final UUID FIRST_PRODUCT_ID = UUID.fromString("a834c24e-886d-470f-bf19-7454a60f0639");
+    public static final UUID SECOND_PRODUCT_ID = UUID.fromString("2ade78e3-aa45-4b6b-adf4-86f8302ced7d");
+    public static final UUID THIRD_PRODUCT_ID = UUID.fromString("b58ac6f1-7ee1-4888-9055-3bebb6aa3631");
+
+    public static ShoppingCartItem createShoppingCartItem() {
+        return ShoppingCartItem.builder()
+                .id(UUID.randomUUID())
+                .version(1)
+                .shoppingCart(new ShoppingCart())
+                .productId(FIRST_PRODUCT_ID)
+                .productQuantity(5)
+                .build();
+    }
+
+    public static ShoppingCart createShoppingCart() {
+        UUID userId = UUID.fromString("2eebb17c-5a55-43dd-add7-c15d49521f14");
+        ShoppingCart shoppingCart = new ShoppingCart();
+
+        UUID firstItemId = UUID.fromString("9b588163-b781-46bf-8714-bd0145337ddc");
+        UUID secondItemId = UUID.fromString("e5cadeb1-089c-430f-85d1-e18438167241");
+        UUID thirdItemId = UUID.fromString("b00ed4dc-62d1-449c-b559-65d9c2cad906");
+
+        Set<ShoppingCartItem> items = new HashSet<>();
+        items.add(ShoppingCartItem.builder()
+                .id(firstItemId)
+                .version(1)
+                .shoppingCart(shoppingCart)
+                .productId(FIRST_PRODUCT_ID)
+                .productQuantity(1)
+                .build());
+        items.add(ShoppingCartItem.builder()
+                .id(secondItemId)
+                .version(1)
+                .shoppingCart(shoppingCart)
+                .productId(SECOND_PRODUCT_ID)
+                .productQuantity(2)
+                .build());
+        items.add(ShoppingCartItem.builder()
+                .id(thirdItemId)
+                .version(1)
+                .shoppingCart(shoppingCart)
+                .productId(THIRD_PRODUCT_ID)
+                .productQuantity(3)
+                .build());
+
+        shoppingCart.setId(UUID.randomUUID());
+        shoppingCart.setUserId(userId);
+        shoppingCart.setItems(items);
+        shoppingCart.setCreatedAt(OffsetDateTime.now());
+        shoppingCart.setClosedAt(OffsetDateTime.now().plusHours(2));
+
+        return shoppingCart;
+    }
+
+    public static ShoppingCart createEmptyShoppingCart() {
+        UUID userId = UUID.fromString("2eebb17c-5a55-43dd-add7-c15d49521f14");
+        ShoppingCart shoppingCart = new ShoppingCart();
+        shoppingCart.setId(UUID.randomUUID());
+        shoppingCart.setUserId(userId);
+        shoppingCart.setItems(new HashSet<>());
+        shoppingCart.setCreatedAt(OffsetDateTime.now());
+        return shoppingCart;
+    }
+
+    public static Map<UUID, ProductSnapshot> createProductsById() {
+        List<ProductSnapshot> products = List.of(
+                new ProductSnapshot(
+                        FIRST_PRODUCT_ID,
+                        "First test name",
+                        "Desc",
+                        BigDecimal.valueOf(1.1),
+                        10,
+                        true,
+                        null,
+                        BigDecimal.valueOf(4.5),
+                        12,
+                        "Test Brand",
+                        "Test Seller",
+                        250),
+                new ProductSnapshot(
+                        SECOND_PRODUCT_ID,
+                        "Second test name",
+                        "Desc",
+                        BigDecimal.valueOf(2.2),
+                        10,
+                        true,
+                        null,
+                        BigDecimal.valueOf(4.0),
+                        8,
+                        "Test Brand",
+                        "Test Seller",
+                        300),
+                new ProductSnapshot(
+                        THIRD_PRODUCT_ID,
+                        "Third test name",
+                        "Desc",
+                        BigDecimal.valueOf(3.3),
+                        10,
+                        true,
+                        null,
+                        BigDecimal.valueOf(3.5),
+                        4,
+                        "Test Brand",
+                        "Test Seller",
+                        350));
+        return products.stream().collect(Collectors.toMap(ProductSnapshot::id, Function.identity()));
+    }
+}

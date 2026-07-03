@@ -1,0 +1,243 @@
+package com.example.trainingproject.review.kafka;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.UUID;
+
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.support.Acknowledgment;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
+import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
+import com.example.trainingproject.review.messaging.kafka.event.ReviewCreatedKafkaEvent;
+import com.example.trainingproject.review.messaging.kafka.inbox.InboxEventRepository;
+import com.example.trainingproject.review.messaging.kafka.inbox.ReviewCreatedKafkaConsumer;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("ReviewCreatedKafkaConsumer")
+class ReviewCreatedKafkaConsumerTest {
+
+    @Mock
+    private InboxEventRepository inboxEventRepository;
+
+    @Mock
+    private Acknowledgment acknowledgment;
+
+    @Mock
+    private SentryHandledExceptionReporter sentryHandledExceptionReporter;
+
+    @Test
+    @DisplayName("records consumed event in inbox and acknowledges after insert")
+    void recordsConsumedEventInInboxAndAcknowledgesAfterInsert() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ReviewCreatedKafkaEvent event = new ReviewCreatedKafkaEvent(
+                eventId,
+                "review.created",
+                1,
+                "training-project",
+                Instant.parse("2026-05-18T12:00:00Z"),
+                null,
+                null,
+                new ReviewCreatedKafkaEvent.Payload(reviewId, productId));
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        String payload = objectMapper.writeValueAsString(event);
+        var properties = new KafkaIntegrationProperties(
+                true,
+                new KafkaIntegrationProperties.Topics("training-project.review.created.v1"),
+                new KafkaIntegrationProperties.ConsumerGroups("training-project-review-ai"),
+                KafkaIntegrationProperties.Outbox.defaults(),
+                new KafkaIntegrationProperties.Inbox(
+                        true, true, 25, 10, Duration.ofSeconds(5), Duration.ofMinutes(5), "test-inbox-worker"));
+        var consumer = new ReviewCreatedKafkaConsumer(
+                objectMapper, properties, inboxEventRepository, sentryHandledExceptionReporter);
+        var record = new ConsumerRecord<>("training-project.review.created.v1", 0, 42L, productId.toString(), payload);
+        when(inboxEventRepository.insertReceivedEvent(
+                        eq(event),
+                        eq("training-project.review.created.v1"),
+                        eq(productId.toString()),
+                        eq(0),
+                        eq(42L),
+                        eq("training-project-review-ai"),
+                        eq(payload),
+                        eq("{}"),
+                        eq(10)))
+                .thenReturn(true);
+
+        consumer.consume(record, acknowledgment);
+
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
+    @DisplayName("records only safe Kafka headers in inbox")
+    void recordsOnlySafeKafkaHeadersInInbox() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ReviewCreatedKafkaEvent event = new ReviewCreatedKafkaEvent(
+                eventId,
+                "review.created",
+                1,
+                "training-project",
+                Instant.parse("2026-05-18T12:00:00Z"),
+                null,
+                null,
+                new ReviewCreatedKafkaEvent.Payload(reviewId, productId));
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        String payload = objectMapper.writeValueAsString(event);
+        var properties = new KafkaIntegrationProperties(
+                true,
+                new KafkaIntegrationProperties.Topics("training-project.review.created.v1"),
+                new KafkaIntegrationProperties.ConsumerGroups("training-project-review-ai"),
+                KafkaIntegrationProperties.Outbox.defaults(),
+                new KafkaIntegrationProperties.Inbox(
+                        true, true, 25, 10, Duration.ofSeconds(5), Duration.ofMinutes(5), "test-inbox-worker"));
+        var consumer = new ReviewCreatedKafkaConsumer(
+                objectMapper, properties, inboxEventRepository, sentryHandledExceptionReporter);
+        var record = new ConsumerRecord<>("training-project.review.created.v1", 0, 42L, productId.toString(), payload);
+        record.headers()
+                .add("eventId", eventId.toString().getBytes(StandardCharsets.UTF_8))
+                .add("correlationId", null)
+                .add("Authorization", "Bearer secret".getBytes(StandardCharsets.UTF_8))
+                .add("Cookie", "session=secret".getBytes(StandardCharsets.UTF_8));
+        when(inboxEventRepository.insertReceivedEvent(
+                        any(ReviewCreatedKafkaEvent.class),
+                        eq("training-project.review.created.v1"),
+                        eq(productId.toString()),
+                        eq(0),
+                        eq(42L),
+                        eq("training-project-review-ai"),
+                        eq(payload),
+                        eq("{\"eventId\":\"" + eventId + "\",\"correlationId\":null}"),
+                        eq(10)))
+                .thenReturn(true);
+
+        consumer.consume(record, acknowledgment);
+
+        verify(acknowledgment).acknowledge();
+    }
+
+    @Test
+    @DisplayName("does not acknowledge when inbox insert fails")
+    void doesNotAcknowledgeWhenInboxInsertFails() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ReviewCreatedKafkaEvent event = new ReviewCreatedKafkaEvent(
+                eventId,
+                "review.created",
+                1,
+                "training-project",
+                Instant.parse("2026-05-18T12:00:00Z"),
+                null,
+                null,
+                new ReviewCreatedKafkaEvent.Payload(reviewId, productId));
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        String payload = objectMapper.writeValueAsString(event);
+        var properties = new KafkaIntegrationProperties(
+                true,
+                new KafkaIntegrationProperties.Topics("training-project.review.created.v1"),
+                new KafkaIntegrationProperties.ConsumerGroups("training-project-review-ai"),
+                KafkaIntegrationProperties.Outbox.defaults(),
+                new KafkaIntegrationProperties.Inbox(
+                        true, true, 25, 10, Duration.ofSeconds(5), Duration.ofMinutes(5), "test-inbox-worker"));
+        var consumer = new ReviewCreatedKafkaConsumer(
+                objectMapper, properties, inboxEventRepository, sentryHandledExceptionReporter);
+        var record = new ConsumerRecord<>("training-project.review.created.v1", 0, 42L, productId.toString(), payload);
+        when(inboxEventRepository.insertReceivedEvent(
+                        eq(event),
+                        eq("training-project.review.created.v1"),
+                        eq(productId.toString()),
+                        eq(0),
+                        eq(42L),
+                        eq("training-project-review-ai"),
+                        eq(payload),
+                        eq("{}"),
+                        eq(10)))
+                .thenThrow(new IllegalStateException("database unavailable"));
+
+        assertThatThrownBy(() -> consumer.consume(record, acknowledgment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("database unavailable");
+
+        verify(acknowledgment, never()).acknowledge();
+    }
+
+    @Test
+    @DisplayName("acknowledges malformed payload without recording inbox event")
+    void acknowledgesMalformedPayloadWithoutRecordingInboxEvent() {
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        var properties = new KafkaIntegrationProperties(
+                true,
+                new KafkaIntegrationProperties.Topics("training-project.review.created.v1"),
+                new KafkaIntegrationProperties.ConsumerGroups("training-project-review-ai"),
+                KafkaIntegrationProperties.Outbox.defaults(),
+                new KafkaIntegrationProperties.Inbox(
+                        true, true, 25, 10, Duration.ofSeconds(5), Duration.ofMinutes(5), "test-inbox-worker"));
+        var consumer = new ReviewCreatedKafkaConsumer(
+                objectMapper, properties, inboxEventRepository, sentryHandledExceptionReporter);
+        var record = new ConsumerRecord<>("training-project.review.created.v1", 0, 42L, "key", "{not-json");
+
+        consumer.consume(record, acknowledgment);
+
+        verify(acknowledgment).acknowledge();
+        verify(sentryHandledExceptionReporter)
+                .capture(any(com.fasterxml.jackson.core.JsonProcessingException.class), any());
+        verify(inboxEventRepository, never())
+                .insertReceivedEvent(any(), any(), any(), anyInt(), anyLong(), any(), any(), any(), anyInt());
+    }
+
+    @Test
+    @DisplayName("acknowledges unsupported event metadata without recording inbox event")
+    void acknowledgesUnsupportedEventMetadataWithoutRecordingInboxEvent() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ReviewCreatedKafkaEvent event = new ReviewCreatedKafkaEvent(
+                eventId,
+                "review.updated",
+                1,
+                "training-project",
+                Instant.parse("2026-05-18T12:00:00Z"),
+                null,
+                null,
+                new ReviewCreatedKafkaEvent.Payload(reviewId, productId));
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        String payload = objectMapper.writeValueAsString(event);
+        var properties = new KafkaIntegrationProperties(
+                true,
+                new KafkaIntegrationProperties.Topics("training-project.review.created.v1"),
+                new KafkaIntegrationProperties.ConsumerGroups("training-project-review-ai"),
+                KafkaIntegrationProperties.Outbox.defaults(),
+                new KafkaIntegrationProperties.Inbox(
+                        true, true, 25, 10, Duration.ofSeconds(5), Duration.ofMinutes(5), "test-inbox-worker"));
+        var consumer = new ReviewCreatedKafkaConsumer(
+                objectMapper, properties, inboxEventRepository, sentryHandledExceptionReporter);
+        var record = new ConsumerRecord<>("training-project.review.created.v1", 0, 42L, productId.toString(), payload);
+
+        consumer.consume(record, acknowledgment);
+
+        verify(acknowledgment).acknowledge();
+        verify(sentryHandledExceptionReporter).capture(any(IllegalStateException.class), any());
+        verify(inboxEventRepository, never())
+                .insertReceivedEvent(any(), any(), any(), anyInt(), anyLong(), any(), any(), any(), anyInt());
+    }
+}

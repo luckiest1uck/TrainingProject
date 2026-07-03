@@ -1,0 +1,29 @@
+package com.example.trainingproject.product.exception;
+
+import java.util.List;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import lombok.Getter;
+
+@Getter
+public final class ProductNotFoundException extends RuntimeException {
+
+    private final List<UUID> productIds;
+
+    public ProductNotFoundException(final UUID productId) {
+        super(String.format("The product with productId = %s is not found.", productId));
+        this.productIds = List.of(productId);
+    }
+
+    public ProductNotFoundException(final List<UUID> productIds) {
+        super(message(productIds));
+        this.productIds = List.copyOf(productIds);
+    }
+
+    private static String message(List<UUID> productIds) {
+        String errorMessage = "Products with productIds = %s are not found.";
+        String productIdsAsString = productIds.stream().map(UUID::toString).collect(Collectors.joining(", "));
+        return String.format(errorMessage, productIdsAsString);
+    }
+}

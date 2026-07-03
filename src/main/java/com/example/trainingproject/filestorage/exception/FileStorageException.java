@@ -1,0 +1,16 @@
+package com.example.trainingproject.filestorage.exception;
+
+import lombok.Getter;
+
+/** Sealed base for all file-storage exceptions. Enables exhaustive pattern matching in switch expressions (Java 25). */
+@Getter
+public abstract sealed class FileStorageException extends RuntimeException
+        permits FileListException, FileReadException, FileUploadException {
+
+    private final String fileName;
+
+    protected FileStorageException(String message, String fileName, Throwable cause) {
+        super(message, cause);
+        this.fileName = fileName;
+    }
+}

@@ -1,0 +1,27 @@
+package com.example.trainingproject.user.repository;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import com.example.trainingproject.user.entity.DeliveryAddressEntity;
+
+public interface DeliveryAddressRepository extends JpaRepository<DeliveryAddressEntity, UUID> {
+
+    List<DeliveryAddressEntity> findAllByUserId(UUID userId);
+
+    boolean existsByUserId(UUID userId);
+
+    Optional<DeliveryAddressEntity> findByIdAndUserId(UUID id, UUID userId);
+
+    Optional<DeliveryAddressEntity> findFirstByUserIdAndIdNotOrderByIdAsc(UUID userId, UUID id);
+
+    @Modifying
+    @Query("UPDATE DeliveryAddressEntity a SET a.isDefault = false WHERE a.user.id = :userId")
+    void clearDefaultForUser(@Param("userId") UUID userId);
+}

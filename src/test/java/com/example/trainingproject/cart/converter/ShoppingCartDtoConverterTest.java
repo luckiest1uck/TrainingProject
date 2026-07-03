@@ -1,0 +1,84 @@
+package com.example.trainingproject.cart.converter;
+
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import java.math.BigDecimal;
+import java.util.Map;
+import java.util.UUID;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import com.example.trainingproject.cart.entity.ShoppingCart;
+import com.example.trainingproject.cart.exception.CartProductSnapshotMissingException;
+import com.example.trainingproject.cart.stub.CartDtoTestStub;
+import com.example.trainingproject.openapi.dto.ShoppingCartDto;
+import com.example.trainingproject.product.api.dto.ProductSnapshot;
+
+class ShoppingCartDtoConverterTest {
+
+    @Test
+    @DisplayName("Should convert ShoppingCart to ShoppingCartDto with complete information")
+    void shouldConvertShoppingCartToShoppingCartDtoWithCompleteInformation() {
+        ShoppingCart cart = CartDtoTestStub.createShoppingCart();
+        Map<UUID, ProductSnapshot> productsById = CartDtoTestStub.createProductsById();
+
+        ShoppingCartDto result = ShoppingCartDtoConverter.toDto(cart, productsById);
+
+        assertNotNull(result);
+        assertEquals(cart.getId(), result.getId());
+        assertEquals(cart.getUserId(), result.getUserId());
+        assertEquals(3, result.getItems().size());
+        assertEquals(3, result.getItemsQuantity());
+        assertEquals(6, result.getProductsQuantity());
+        assertEquals(cart.getCreatedAt(), result.getCreatedAt());
+        assertEquals(cart.getClosedAt(), result.getClosedAt());
+        // 1*1.1 + 2*2.2 + 3*3.3 = 1.1 + 4.4 + 9.9 = 15.4
+        assertEquals(0, new BigDecimal("15.4").compareTo(result.getItemsTotalPrice()));
+    }
+
+    @Test
+    @DisplayName("Should convert empty shopping cart correctly")
+    void shouldConvertEmptyShoppingCartCorrectly() {
+        ShoppingCart emptyCart = CartDtoTestStub.createEmptyShoppingCart();
+        Map<UUID, ProductSnapshot> productsById = Map.of();
+
+        ShoppingCartDto result = ShoppingCartDtoConverter.toDto(emptyCart, productsById);
+
+        assertNotNull(result);
+        assertEquals(emptyCart.getId(), result.getId());
+        assertEquals(emptyCart.getUserId(), result.getUserId());
+        assertEquals(0, result.getItems().size());
+        assertEquals(0, result.getItemsQuantity());
+        assertEquals(0, result.getProductsQuantity());
+        assertEquals(BigDecimal.ZERO, result.getItemsTotalPrice());
+        assertEquals(emptyCart.getCreatedAt(), result.getCreatedAt());
+        assertEquals(emptyCart.getClosedAt(), result.getClosedAt());
+    }
+
+    @Test
+    @DisplayName("Should fail when product snapshot is missing for a cart item")
+    void shouldFailWhenProductSnapshotIsMissingForCartItem() {
+        ShoppingCart cart = CartDtoTestStub.createShoppingCart();
+        Map<UUID, ProductSnapshot> productsById = CartDtoTestStub.createProductsById();
+        productsById.remove(CartDtoTestStub.FIRST_PRODUCT_ID);
+
+        assertThatThrownBy(() -> ShoppingCartDtoConverter.toDto(cart, productsById))
+                .isInstanceOf(CartProductSnapshotMissingException.class);
+    }
+
+    @Test
+    @DisplayName("Should treat a newly constructed shopping cart as empty")
+    void shouldTreatNewlyConstructedShoppingCartAsEmpty() {
+        ShoppingCart cart = new ShoppingCart();
+        cart.setId(UUID.randomUUID());
+
+        ShoppingCartDto result = ShoppingCartDtoConverter.toDto(cart, Map.of());
+
+        assertEquals(0, result.getItemsQuantity());
+        assertEquals(0, result.getProductsQuantity());
+        assertEquals(BigDecimal.ZERO, result.getItemsTotalPrice());
+    }
+}

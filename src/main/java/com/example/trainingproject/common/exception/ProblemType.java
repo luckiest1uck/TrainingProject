@@ -1,0 +1,75 @@
+package com.example.trainingproject.common.exception;
+
+import lombok.experimental.UtilityClass;
+
+/** Common RFC 9457 problem-detail type slugs. Each slug is appended to the configured problem.type-base-url. */
+@UtilityClass
+public class ProblemType {
+
+    // Auth & Security
+    public static final String AUTH_REQUIRED = "auth-required";
+    public static final String ACCESS_DENIED = "access-denied";
+    public static final String INVALID_CREDENTIALS = "invalid-credentials";
+    public static final String SESSION_EXPIRED = "session-expired";
+    public static final String AUTH_FAILED = "auth-failed";
+    public static final String REGISTRATION_FAILED = "registration-failed";
+    public static final String ACCOUNT_LOCKED = "account-locked";
+    public static final String SESSION_NOT_FOUND = "session-not-found";
+    public static final String SESSION_ACCESS_DENIED = "session-access-denied";
+    public static final String INTERNAL_ERROR = "internal-error";
+    public static final String RATE_LIMITED = "rate-limited";
+    public static final String TURNSTILE_FAILED = "turnstile-failed";
+
+    // Orders
+    public static final String ORDER_NOT_FOUND = "order-not-found";
+    public static final String ORDER_ACCESS_DENIED = "order-access-denied";
+    public static final String ORDER_DELIVERY_ADDRESS_NOT_FOUND = "order-delivery-address-not-found";
+    public static final String ORDER_STATE_INVALID = "order-state-invalid";
+    public static final String ORDER_CANCELLATION_EXPIRED = "order-cancellation-expired";
+    public static final String INVALID_PARAMETER = "invalid-parameter";
+
+    // Cart
+    public static final String CART_NOT_FOUND = "cart-not-found";
+    public static final String CART_ITEM_NOT_FOUND = "cart-item-not-found";
+    public static final String CART_INVALID_QUANTITY = "cart-invalid-quantity";
+    public static final String CART_INVALID_ITEM_REQUEST = "cart-invalid-item-request";
+    public static final String CART_PRODUCT_NOT_FOUND = "cart-product-not-found";
+    public static final String CART_PRODUCT_SNAPSHOT_MISSING = "cart-product-snapshot-missing";
+
+    // Validation & Files
+    public static final String VALIDATION_FAILED = "validation-failed";
+    public static final String FILE_TOO_LARGE = "file-too-large";
+    public static final String FILE_READ_FAILED = "file-read-failed";
+    public static final String FILE_LIST_FAILED = "file-list-failed";
+    public static final String FILE_UPLOAD_FAILED = "file-upload-failed";
+
+    // Payment
+    public static final String PAYMENT_EVENT_FAILED = "payment-event-failed";
+    public static final String PAYMENT_SESSION_FAILED = "payment-session-failed";
+
+    // Product
+    public static final String PRODUCT_NOT_FOUND = "product-not-found";
+
+    // Review
+    public static final String REVIEW_ACCESS_DENIED = "review-access-denied";
+    public static final String REVIEW_CONFLICT = "review-conflict";
+    public static final String REVIEW_NOT_FOUND = "review-not-found";
+    public static final String REVIEW_REJECTED = "review-rejected";
+    public static final String REVIEW_SUMMARY_UNAVAILABLE = "review-summary-unavailable";
+
+    // User
+    public static final String DELIVERY_ADDRESS_NOT_FOUND = "delivery-address-not-found";
+    public static final String USER_NOT_FOUND = "user-not-found";
+    public static final String INVALID_AVATAR_TYPE = "invalid-avatar-type";
+
+    // Support chat
+    public static final String SUPPORT_CHAT_DISABLED = "support-chat-disabled";
+    public static final String SUPPORT_CHAT_ACCESS_RESTRICTED = "support-chat-access-restricted";
+    public static final String SUPPORT_CHAT_EMAIL_VERIFICATION_REQUIRED = "support-chat-email-verification-required";
+    public static final String SUPPORT_CHAT_CONVERSATION_NOT_FOUND = "support-chat-conversation-not-found";
+    public static final String SUPPORT_CHAT_INVALID_MESSAGE = "support-chat-invalid-message";
+    public static final String SUPPORT_CHAT_DUPLICATE_MESSAGE = "support-chat-duplicate-message";
+    public static final String SUPPORT_CHAT_RATE_LIMITED = "support-chat-rate-limited";
+    public static final String SUPPORT_CHAT_TURNSTILE_FAILED = "support-chat-turnstile-failed";
+    public static final String SUPPORT_CHAT_TEMPORARILY_UNAVAILABLE = "support-chat-temporarily-unavailable";
+}

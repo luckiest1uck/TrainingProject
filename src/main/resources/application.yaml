@@ -1,0 +1,756 @@
+# $schema: ./application-config.schema.json
+# noinspection YAMLSchemaValidation
+# =============================================================================
+#                         TRAINING PROJECT — APPLICATION CONFIG
+# =============================================================================
+# Single-file configuration organized by concern.
+# Profile overrides: application-dev.yaml, application-prod.yaml, etc.
+# Environment variables: see .env.example for all supported vars.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ① SERVER
+# ─────────────────────────────────────────────────────────────────────────────
+server:
+  port: ${PORT:${APP_SERVER_PORT}}
+  tomcat:
+    # How many requests to queue when all threads are busy (OS-level TCP backlog).
+    accept-count: 20
+    threads:
+      # Max worker threads handling incoming HTTP requests concurrently.
+      max: 50
+      # Threads kept alive even when idle, ready to serve requests immediately.
+      min-spare: 5
+    # Max size of an HTML form POST body (e.g. login forms).
+    max-http-form-post-size: 10MB
+    # Max body Tomcat will read/discard if the client sends more than allowed.
+    max-swallow-size: 10MB
+  error:
+    # Never expose internals to API consumers (security best practice).
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
+    include-exception: false
+    whitelabel:
+      # Disable Spring's default HTML error page — we return JSON errors via @ControllerAdvice.
+      enabled: false
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ② SPRING CORE
+# ─────────────────────────────────────────────────────────────────────────────
+spring:
+  application:
+    name: Training Project Application
+    version: ${APP_VERSION:1}
+    label: training-project-application
+  main:
+    # Allow a @Bean to replace another with the same name (used by test/profile overrides).
+    allow-bean-definition-overriding: true
+    # Fail fast if beans depend on each other in a loop — keeps architecture clean.
+    allow-circular-references: false
+    # Delay bean creation until first use — speeds up startup significantly.
+    lazy-initialization: true
+  threads:
+    virtual:
+      # Java 21+ virtual threads: lightweight threads for high-concurrency I/O (database, HTTP calls).
+      enabled: true
+  banner:
+    charset: UTF-8
+    location: classpath:banner.txt
+  output:
+    ansi:
+      # Disable colored console output (prod logs go to files/aggregators, not terminals).
+      enabled: never
+  messages:
+    # Location of i18n message bundles for validation/error messages.
+    basename: messages/messages
+  config:
+    # Import additional config files. "optional:" means app starts even if file is missing.
+    import: optional:stripe.yaml
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ②-A  DATABASE (PostgreSQL + Hikari + JPA + Liquibase)
+  # ───────────────────────────────────────────────────────────────────────────
+  datasource:
+    # prepareThreshold=0 disables server-side prepared statement caching (avoids issues with PgBouncer).
+    url: jdbc:postgresql://${DATASOURCE_HOST}:${DATASOURCE_PORT}/${DATASOURCE_NAME}?serverTimezone=UTC&sslmode=${DATASOURCE_SSL_MODE:disable}&prepareThreshold=0
+    username: ${DATASOURCE_USERNAME}
+    password: ${DATASOURCE_PASSWORD}
+    hikari:
+      # Hikari = JDBC connection pool. Controls how many DB connections are open simultaneously.
+      minimum-idle: 1
+      maximum-pool-size: 5
+      # How long to wait for a free connection before throwing an exception (ms).
+      connection-timeout: 20000
+      # 0 = never evict idle connections (pool stays at minimum-idle size).
+      idle-timeout: 0
+      # Force-close connections after this time to avoid stale/broken connections (ms).
+      max-lifetime: 240000
+      # Send a lightweight query periodically to keep connections alive through firewalls/proxies (ms).
+      keepalive-time: 30000
+  jpa:
+    hibernate:
+      # "validate" = Hibernate checks that entities match the DB schema but never modifies it.
+      # Schema changes are managed by Liquibase migrations instead.
+      ddl-auto: validate
+    # Disable "Open Session in View" anti-pattern — prevents lazy-loading in controllers.
+    open-in-view: false
+    properties:
+      hibernate:
+        # Skip JDBC metadata lookup at startup — faster boot, requires explicit dialect config.
+        allow_jdbc_metadata_access: false
+  liquibase:
+    # Liquibase = database migration tool. Runs SQL changesets on startup to evolve the schema.
+    enabled: true
+    change-log: classpath:db/changelog-master.yaml
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ②-B  REDIS (in-memory cache & JWT blacklist store)
+  # ───────────────────────────────────────────────────────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ②-C  KAFKA (optional event streaming)
+  #       Disabled by default and in local/test profiles.
+  #       Production deployments can opt in with KAFKA_ENABLED=true.
+  # ───────────────────────────────────────────────────────────────────────────
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:19092}
+    client-id: ${KAFKA_CLIENT_ID:training-project}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        "[acks]": all
+        "[enable.idempotence]": true
+        "[retries]": 10
+        "[max.in.flight.requests.per.connection]": 5
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ②-D  OBJECT STORAGE (AWS S3 / MinIO)
+  #       Stores product images and user avatars. MinIO is used locally as an
+  #       S3-compatible replacement so you don't need a real AWS account.
+  # ───────────────────────────────────────────────────────────────────────────
+  aws:
+    enabled: ${AWS_ENABLED:false}
+    access-key: ${AWS_ACCESS_KEY}
+    secret-key: ${AWS_SECRET_KEY}
+    region: ${AWS_REGION}
+    # Custom endpoint for MinIO or localstack (leave empty for real AWS).
+    endpoint-url: ${AWS_ENDPOINT_URL:}
+    # Base URL used to build public image links returned in API responses.
+    public-url-base: ${AWS_PUBLIC_URL_BASE:}
+    # CloudFront CDN distribution ID — used to invalidate cached images after upload.
+    cloudfront-distribution-id: ${AWS_CLOUDFRONT_DISTRIBUTION_ID:}
+    buckets:
+      products: ${AWS_PRODUCT_BUCKET}
+      user-avatar: ${AWS_USER_BUCKET}
+    # How long pre-signed download URLs remain valid (ISO 8601 duration).
+    link-expiration-time: PT1H
+    read-timeout: 10s
+    connect-timeout: 10s
+    api-call-attempt-timeout: 15s
+    api-call-timeout: 60s
+    # Local directory with seed product images used during data migration.
+    default-image-directory:
+      products: ${AWS_DEFAULT_PRODUCT_IMAGES_PATH}
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ②-E  EMAIL (SMTP + verification)
+  # ───────────────────────────────────────────────────────────────────────────
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    subject:
+      confirmation: "Training Project - Email Confirmation"
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            # STARTTLS upgrades the connection to TLS after connecting (required by Gmail).
+            enable: true
+          # Timeouts prevent the app from hanging if the mail server is unreachable (ms).
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # ②-F  FILE UPLOAD (Multipart)
+  #       Controls avatar/image upload size limits at the servlet container level.
+  # ───────────────────────────────────────────────────────────────────────────
+  servlet:
+    multipart:
+      enabled: true
+      # Max size of a single uploaded file.
+      max-file-size: 5MB
+      # Max total size of the entire multipart request (all files + form fields).
+      max-request-size: 10MB
+      # Files smaller than this are kept in memory; larger ones are written to a temp file.
+      file-size-threshold: 2KB
+
+avatar:
+  upload-mode: ${AVATAR_UPLOAD_MODE:backend}
+  presigned-url-ttl: ${AVATAR_UPLOAD_PRESIGNED_URL_TTL:5m}
+  max-bytes: ${AVATAR_UPLOAD_MAX_BYTES:5242880}
+  max-pixels: ${AVATAR_UPLOAD_MAX_PIXELS:12000000}
+  processing-timeout: ${AVATAR_UPLOAD_PROCESSING_TIMEOUT:10m}
+  incoming-bucket: ${AVATAR_UPLOAD_INCOMING_BUCKET:${AWS_USER_BUCKET:training-project-users}}
+  processed-bucket: ${AVATAR_UPLOAD_PROCESSED_BUCKET:${AWS_USER_BUCKET:training-project-users}}
+  completion-queue-url: ${AVATAR_UPLOAD_COMPLETION_QUEUE_URL:}
+  retention-cleanup-enabled: ${AVATAR_UPLOAD_RETENTION_CLEANUP_ENABLED:true}
+  retention-cleanup-interval: ${AVATAR_UPLOAD_RETENTION_CLEANUP_INTERVAL:PT30M}
+  completion-queue:
+    enabled: ${AVATAR_UPLOAD_COMPLETION_QUEUE_ENABLED:false}
+    poll-interval: ${AVATAR_UPLOAD_COMPLETION_QUEUE_POLL_INTERVAL:PT5S}
+    max-messages: ${AVATAR_UPLOAD_COMPLETION_QUEUE_MAX_MESSAGES:5}
+    visibility-timeout: ${AVATAR_UPLOAD_COMPLETION_QUEUE_VISIBILITY_TIMEOUT:PT30S}
+    wait-time: ${AVATAR_UPLOAD_COMPLETION_QUEUE_WAIT_TIME:PT1S}
+
+# Email feature flag & verification settings (SMTP config is above under spring.mail).
+email:
+  enabled: ${EMAIL_ENABLED:false}
+  # Length of the URL-safe opaque token sent to the user's email for verification.
+  verification-token-length: 43
+
+# Short-lived in-memory store for email verification tokens.
+temporary-cache:
+  time:
+    # Token validity in minutes.
+    token: 5
+
+# Kafka feature flag and app-owned topic/group names.
+kafka:
+  enabled: ${KAFKA_ENABLED:false}
+  topics:
+    review-created: ${KAFKA_TOPIC_REVIEW_CREATED:training-project.review.created.v1}
+  consumer-groups:
+    review-ai: ${KAFKA_CONSUMER_GROUP_REVIEW_AI:training-project-review-ai}
+  outbox:
+    enabled: ${KAFKA_OUTBOX_ENABLED:true}
+    worker-enabled: ${KAFKA_OUTBOX_WORKER_ENABLED:true}
+    batch-size: ${KAFKA_OUTBOX_BATCH_SIZE:25}
+    max-attempts: ${KAFKA_OUTBOX_MAX_ATTEMPTS:10}
+    poll-interval: ${KAFKA_OUTBOX_POLL_INTERVAL:PT5S}
+    stale-lock-timeout: ${KAFKA_OUTBOX_STALE_LOCK_TIMEOUT:PT5M}
+    publish-timeout: ${KAFKA_OUTBOX_PUBLISH_TIMEOUT:PT10S}
+    worker-id: ${KAFKA_OUTBOX_WORKER_ID:training-project-outbox-worker}
+  inbox:
+    enabled: ${KAFKA_INBOX_ENABLED:true}
+    worker-enabled: ${KAFKA_INBOX_WORKER_ENABLED:true}
+    batch-size: ${KAFKA_INBOX_BATCH_SIZE:25}
+    max-attempts: ${KAFKA_INBOX_MAX_ATTEMPTS:10}
+    poll-interval: ${KAFKA_INBOX_POLL_INTERVAL:PT5S}
+    stale-lock-timeout: ${KAFKA_INBOX_STALE_LOCK_TIMEOUT:PT5M}
+    worker-id: ${KAFKA_INBOX_WORKER_ID:training-project-review-ai-inbox-worker}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ③ SECURITY (JWT + CORS + Rate Limiting + Login Attempts)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- JWT (JSON Web Tokens) ---
+# Short-lived access tokens + longer-lived refresh tokens for session management.
+jwt:
+  header: Authorization
+  secret: ${APP_JWT_SECRET}
+  # Access token lifetime — short to limit damage if stolen.
+  expiration: PT15M
+  refresh-secret: ${APP_JWT_REFRESH_SECRET}
+  # Refresh token lifetime — user stays logged in this long without re-entering credentials.
+  refresh-expiration: PT24H
+  # Optional key identifiers for rotation-aware JWT headers and verification.
+  access-key-id: ${APP_JWT_ACCESS_KEY_ID:}
+  refresh-key-id: ${APP_JWT_REFRESH_KEY_ID:}
+  previous-secret: ${APP_JWT_PREVIOUS_SECRET:}
+  previous-refresh-secret: ${APP_JWT_PREVIOUS_REFRESH_SECRET:}
+  previous-access-key-id: ${APP_JWT_PREVIOUS_ACCESS_KEY_ID:}
+  previous-refresh-key-id: ${APP_JWT_PREVIOUS_REFRESH_KEY_ID:}
+  # "iss" claim — identifies who created the token.
+  issuer: ${APP_JWT_ISSUER:training-project}
+  # "aud" claim — identifies the intended recipient (our frontend).
+  audience: ${APP_JWT_AUDIENCE:training-project-client}
+
+# --- CORS (Cross-Origin Resource Sharing) ---
+# Controls which frontend origins can call our API from a browser.
+cors:
+  allowed-origins: ${ALLOWED_ORIGINS}
+  allowed-methods: GET,POST,PUT,DELETE,OPTIONS,PATCH
+  allowed-headers: Authorization,Content-Type,Accept,Origin,X-Requested-With,X-Session-ID,X-Trace-ID,X-Correlation-ID,Idempotency-Key,X-Refresh-Token
+  exposed-headers: Authorization,Content-Type,X-Request-ID
+  # Allow cookies/auth headers in cross-origin requests.
+  allow-credentials: true
+  # Browser caches preflight (OPTIONS) response for this many seconds.
+  max-age: 3600
+
+# --- Rate Limiting ---
+# Protects against brute-force attacks and abuse. Each bucket defines
+# max-requests allowed within window-duration per client IP.
+security:
+  # Argon2 password hashing parameters (higher = more secure but slower).
+  argon2:
+    # Memory cost in KiB (16 MiB default). Lower in tests for speed.
+    memory: 16384
+    # Number of hash iterations.
+    iterations: 2
+  rate-limit:
+    global:
+      max-requests: 60
+      window-duration: PT1M
+    auth:
+      # Tighter limit on login/register/password-reset to prevent credential stuffing.
+      max-requests: 10
+      window-duration: PT1M
+    login:
+      # Login is a higher-risk public write path than general auth.
+      max-requests: 5
+      window-duration: PT1M
+    signup:
+      # Account creation should stay tighter than general browsing traffic.
+      max-requests: 5
+      window-duration: PT10M
+    password-reset:
+      # Password reset is abuse-prone and should be throttled separately.
+      max-requests: 5
+      window-duration: PT10M
+    search:
+      max-requests: 30
+      window-duration: PT1M
+    telemetry:
+      max-requests: 120
+      window-duration: PT1M
+    pre-auth:
+      # Public endpoints (product listing, etc.) — more generous limit.
+      max-requests: 200
+      window-duration: PT1M
+    payment:
+      # Tight limit on payment endpoints to prevent abuse.
+      max-requests: 20
+      window-duration: PT1M
+    checkout:
+      # Checkout is a sensitive write path and gets a stricter user-aware bucket.
+      max-requests: 10
+      window-duration: PT1M
+    review-write:
+      # Review creation is a user-facing write path that is easy to spam.
+      max-requests: 10
+      window-duration: PT10M
+    write:
+      # Mutating operations (POST/PUT/DELETE) that don't match a more specific category.
+      max-requests: 20
+      window-duration: PT1M
+    file-upload:
+      # File uploads are expensive (S3/MinIO writes) — keep tight.
+      max-requests: 5
+      window-duration: PT1M
+    # Repeat-offender ban: after this many blocks within ban-duration, short-circuit 429.
+    ban-threshold: 10
+    ban-duration: PT5M
+  # Comma-separated list of trusted reverse-proxy IPs that may set X-Forwarded-For.
+  # Leave empty when the app is directly reachable (safe default).
+  trusted-proxies:
+  # NOTE: /actuator endpoints are permitAll and skipped by rate-limiting filters.
+  # Protect them at the network/reverse-proxy layer (e.g. restrict by IP).
+
+# --- Brute-Force Protection ---
+login-attempts:
+  # Lock account after this many consecutive failed login attempts.
+  max-attempts: 5
+  # How long the account stays locked (minutes).
+  lockout-duration-minutes: 60
+
+# Cron expression: check for accounts to unlock every 5 minutes.
+unlock-account-scheduler-cron: '0 0/5 * * * *'
+
+# --- Cloudflare Turnstile ---
+# Bot protection for login/register. Disabled when secret-key is blank.
+turnstile:
+  enabled: ${TURNSTILE_ENABLED:false}
+  validate-actions: ${TURNSTILE_VALIDATE_ACTIONS:false}
+  checkout-enabled: ${TURNSTILE_CHECKOUT_ENABLED:false}
+  reviews-enabled: ${TURNSTILE_REVIEWS_ENABLED:false}
+  avatar-enabled: ${TURNSTILE_AVATAR_ENABLED:false}
+  secret-key: ${TURNSTILE_SECRET_KEY:}
+  connect-timeout: ${TURNSTILE_CONNECT_TIMEOUT:PT2S}
+  read-timeout: ${TURNSTILE_READ_TIMEOUT:PT3S}
+  expected-hostnames: ${TURNSTILE_EXPECTED_HOSTNAMES:}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ④ INTEGRATIONS & FEATURE FLAGS
+# ─────────────────────────────────────────────────────────────────────────────
+# Each integration is disabled by default. Set enabled: true only when you
+# have real credentials. This lets contributors run the app locally without
+# needing accounts for every third-party service.
+
+# --- Google OAuth2 (social login) ---
+google:
+  enabled: ${GOOGLE_ENABLED:false}
+  auth:
+    server:
+      url: ${GOOGLE_AUTH_SERVER_URL}
+  scope: ${GOOGLE_AUTH_SCOPE}
+  client-id: ${GOOGLE_AUTH_CLIENT_ID:}
+  client-secret: ${GOOGLE_AUTH_CLIENT_SECRET:}
+  redirect-uri: ${GOOGLE_AUTH_REDIRECT_URI}
+  timeout:
+    connect-timeout: ${GOOGLE_AUTH_CONNECT_TIMEOUT:PT2S}
+    read-timeout: ${GOOGLE_AUTH_READ_TIMEOUT:PT3S}
+
+# --- GitHub OAuth2 (social login) ---
+github:
+  enabled: ${GITHUB_ENABLED:false}
+  scope: ${GITHUB_AUTH_SCOPE:read:user user:email}
+  client-id: ${GITHUB_AUTH_CLIENT_ID:}
+  client-secret: ${GITHUB_AUTH_CLIENT_SECRET:}
+  redirect-uri: ${GITHUB_AUTH_REDIRECT_URI:}
+  api-version: ${GITHUB_API_VERSION:2026-03-10}
+  timeout:
+    connect-timeout: ${GITHUB_AUTH_CONNECT_TIMEOUT:PT2S}
+    read-timeout: ${GITHUB_AUTH_READ_TIMEOUT:PT3S}
+
+# How long the OAuth "state" parameter remains valid (prevents CSRF in OAuth flow).
+oauth:
+  state-ttl-minutes: 10
+  handoff-ttl: ${OAUTH_HANDOFF_TTL:PT1M}
+  handoff-encryption-key: ${OAUTH_HANDOFF_ENCRYPTION_KEY:}
+
+# --- AI (OpenAI-compatible API for review moderation & summaries) ---
+ai:
+  enabled: ${AI_ENABLED:false}
+  api-key: ${SPRING_AI_OPENAI_API_KEY:}
+  base-url: ${AI_BASE_URL}
+  model-name: ${AI_MODEL_NAME}
+  review-summary:
+    # Wait this long after the last review before regenerating the AI summary (debounce).
+    debounce-delay: PT2M
+    # Maximum time to wait before forcing summary regeneration regardless of new reviews.
+    max-wait: PT10M
+
+# --- Stripe (payment processing) ---
+stripe:
+  enabled: ${STRIPE_ENABLED:false}
+  secret-key: ${STRIPE_SECRET_KEY:}
+  # Webhook secret verifies that incoming webhook calls actually come from Stripe.
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+  currency: ${STRIPE_CURRENCY:usd}
+  # Shipping options shown to the customer during Stripe Checkout.
+  shipping-options:
+    - name: "Free shipping"
+      amount-cents: 0
+      min-days: 5
+      max-days: 7
+    - name: "Next day air"
+      amount-cents: 1500
+      min-days: 1
+      max-days: 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⑤ CACHING (TTLs + Caffeine sizing)
+# ─────────────────────────────────────────────────────────────────────────────
+# TTL = Time To Live. After this duration, cached data is considered stale and re-fetched.
+# Values use ISO 8601 duration format: PT10M = 10 minutes, PT24H = 24 hours.
+cache:
+  default-ttl: PT10M
+  product-ttl: PT10M
+  brands-ttl: PT24H
+  sellers-ttl: PT24H
+  # Pre-signed image URLs expire in S3 after 1h, so cache them slightly less.
+  image-url-ttl: PT50M
+  image-urls-ttl: PT24H
+  caffeine:
+    # Caffeine = in-process (JVM heap) cache. These control max entries per cache instance.
+    # Used for rate-limiting counters and short-lived data that doesn't need Redis.
+    #
+    # TRADE-OFF: rate-limit-window-size caps how many unique IPs/users can be tracked
+    # simultaneously. If exceeded, the least-recently-accessed entry is evicted and its
+    # counter resets — effectively granting a fresh rate-limit window. For the public demo hostname
+    # traffic (low volume), 10 000 is more than sufficient. Increase only if you observe
+    # frequent evictions in metrics (rate_limit.requests.allowed growing unexpectedly).
+    rate-limit-warn-size: 1000
+    rate-limit-filter-size: 5000
+    rate-limit-window-size: 10000
+    redis-error-log-size: 1000
+    temporary-store-size: 10000
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⑥ BUSINESS LOGIC (Pagination, Product defaults, Migration)
+# ─────────────────────────────────────────────────────────────────────────────
+pagination:
+  # 0-based page numbering (first page = 0).
+  default-page-number: 0
+  products:
+    default-page-size: 50
+    default-sort-attribute: "name"
+    default-sort-direction: "desc"
+  reviews:
+    default-page-size: 10
+    default-sort-attribute: "createdAt"
+    default-sort-direction: "desc"
+  orders:
+    default-page-size: 10
+    max-page-size: 50
+    default-sort-attribute: "createdAt"
+    default-sort-direction: "desc"
+
+product:
+  # Fallback image shown when a product has no uploaded photo.
+  placeholder-image-url: "/assets/images/product-placeholder.png"
+
+migration:
+  # Max time allowed for startup data migration tasks before they are canceled.
+  timeout-minutes: 5
+  # Whether to upload seed product images to S3/MinIO on startup.
+  upload:
+    enabled: false
+  # Whether to recalculate product ratings/review counts on startup.
+  ratings:
+    enabled: false
+
+order:
+  # How long (minutes) after creation a customer can cancel their order.
+  cancellation-window-minutes: 30
+  # How often (ms) to check for unpaid orders older than 24h and mark them canceled.
+  expiration-check-interval-ms: 3600000
+  # How often (ms) to check for refunds stuck in REFUND_REQUESTED state > 4h.
+  refund-monitor-interval-ms: 3600000
+  # Disable order maintenance scheduled jobs in multi-instance deploys if another instance owns them.
+  maintenance:
+    enabled: true
+    batch-size: 100
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⑦ API & DOCUMENTATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+# URL of the frontend app — used for CORS, OAuth redirects, and email links.
+frontend:
+  url: ${FRONTEND_URL}
+
+# Base URL for RFC 7807 "Problem Details" type URIs in error responses.
+problem:
+  type-base-url: ${PROBLEM_TYPE_BASE_URL}
+
+# SpringDoc generates OpenAPI 3 spec and Swagger UI automatically from your controllers.
+springdoc:
+  api-docs:
+    # JSON schema endpoint: GET /api/docs/schema
+    path: /api/docs/schema
+    enabled: true
+  swagger-ui:
+    # Interactive API explorer: http://localhost:8083/api/docs/swagger-ui/index.html
+    path: /api/docs/swagger-ui
+    enabled: true
+  # false = load API spec lazily (faster startup).
+  pre-loading-enabled: false
+  default-produces-media-type: application/json
+
+support-chat:
+  enabled: ${SUPPORT_CHAT_ENABLED:false}
+  allowed-emails: ${SUPPORT_CHAT_ALLOWED_EMAILS:}
+  message-max-length: 4000
+  retention-days: 90
+  retention-cleanup-enabled: ${SUPPORT_CHAT_RETENTION_CLEANUP_ENABLED:true}
+  retention-cleanup-interval: ${SUPPORT_CHAT_RETENTION_CLEANUP_INTERVAL:PT24H}
+  owner-message-mode: ${SUPPORT_CHAT_OWNER_MESSAGE_MODE:disabled}
+  telegram:
+    bot-token: ${SUPPORT_CHAT_TELEGRAM_BOT_TOKEN:}
+    chat-id: ${SUPPORT_CHAT_TELEGRAM_CHAT_ID:}
+    owner-user-id: ${SUPPORT_CHAT_TELEGRAM_OWNER_USER_ID:0}
+    webhook-secret: ${SUPPORT_CHAT_TELEGRAM_WEBHOOK_SECRET:}
+    forum-topics-enabled: ${SUPPORT_CHAT_TELEGRAM_FORUM_TOPICS_ENABLED:true}
+    connect-timeout: ${SUPPORT_CHAT_TELEGRAM_CONNECT_TIMEOUT:3s}
+    read-timeout: ${SUPPORT_CHAT_TELEGRAM_READ_TIMEOUT:5s}
+  turnstile:
+    first-message-enabled: ${SUPPORT_CHAT_TURNSTILE_FIRST_MESSAGE_ENABLED:false}
+    long-inactivity-duration: ${SUPPORT_CHAT_TURNSTILE_LONG_INACTIVITY_DURATION:PT24H}
+    abuse-cooldown-duration: ${SUPPORT_CHAT_TURNSTILE_ABUSE_COOLDOWN_DURATION:PT5M}
+  websocket:
+    max-active-sessions-per-user: ${SUPPORT_CHAT_WEBSOCKET_MAX_ACTIVE_SESSIONS_PER_USER:5}
+  rate-limits:
+    per-minute:
+      max-requests: 20
+      window-duration: 1m
+    per-hour:
+      max-requests: 100
+      window-duration: 1h
+    per-day:
+      max-requests: 300
+      window-duration: 24h
+    per-conversation-burst:
+      max-requests: 10
+      window-duration: 10s
+    per-ip:
+      max-requests: 60
+      window-duration: 1m
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⑧ OBSERVABILITY (Sentry + Actuator/Metrics + Tracing)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --- Sentry (error tracking & performance monitoring SaaS) ---
+sentry:
+  enabled: ${SENTRY_ENABLED:false}
+  # DSN = Data Source Name — unique URL that tells the SDK where to send events.
+  dsn: ${SENTRY_DSN:}
+  environment: ${SENTRY_ENVIRONMENT:local}
+  # Release connects Sentry issues to the exact deployed image/Git SHA.
+  release: ${SENTRY_RELEASE:training-project-backend@${spring.application.version}}
+  # Fraction of errors to capture (1.0 = 100%).
+  sample-rate: 1.0
+  # Fraction of traced requests to profile (CPU flame graphs).
+  profiles-sample-rate: 0.1
+  # Never send Personally Identifiable Information (emails, IPs) to Sentry.
+  send-default-pii: false
+  attach-stacktrace: true
+  attach-threads: true
+  enable-tracing: true
+  enable-profiling: true
+  logging:
+    # Only send ERROR-level log events to Sentry (avoids noise).
+    minimum-event-level: error
+    # Breadcrumbs = context trail leading up to an error. INFO and above are captured.
+    minimum-breadcrumb-level: info
+  tracing:
+    # Propagate trace headers only to first-party/local services, not every outbound HTTP call.
+    trace-propagation-targets:
+      - "localhost"
+      - "127.0.0.1"
+      - "^https://([a-z0-9-]+\\.)?training-project\\.uk(/.*)?$"
+  trace-critical-path-prefixes: "/api/v1/auth/,/api/v1/payment/,/api/v1/orders/"
+  trace-critical-sample-rate: 1.0
+  trace-user-facing-path-prefixes: "/api/v1/products/,/api/v1/cart/"
+  trace-user-facing-sample-rate: 0.5
+  trace-default-sample-rate: 0.1
+  # These exceptions are too common/expected to report as errors.
+  ignored-exceptions-for-type:
+    - java.lang.IllegalArgumentException
+  # Tells Sentry which stack frames belong to our code (vs. library code).
+  in-app-packages:
+    - com.example.trainingproject
+
+# --- Spring Boot Actuator (health checks, metrics, Prometheus) ---
+management:
+  server:
+    port: ${server.port}
+  endpoint:
+    prometheus:
+      # Exposes /actuator/prometheus for Prometheus scraping (Grafana dashboards).
+      enabled: true
+    shutdown:
+      enabled: false
+    health:
+      enabled: true
+      probes:
+        enabled: true
+        add-additional-paths: true
+      # "when-authorized" = only authenticated users see full health details.
+      show-details: when-authorized
+  endpoints:
+    web:
+      exposure:
+        # Which actuator endpoints are accessible over HTTP.
+        include: health, info, metrics, prometheus
+      base-path: /actuator
+  prometheus:
+    # Shared secret for Prometheus/Alloy scrapes using Authorization: Metrics <token>.
+    scrape-token: ${MANAGEMENT_PROMETHEUS_SCRAPE_TOKEN:}
+    metrics:
+      export:
+        enabled: true
+  metrics:
+    tags:
+      # Added to every metric — lets you filter by app in multi-service Grafana dashboards.
+      application: ${spring.application.name}
+    distribution:
+      # Histogram buckets enable percentile queries in Prometheus/Grafana.
+      percentiles-histogram:
+        http.server.requests: true
+        spring.data.repository.invocations: true
+        hikaricp.connections.acquire: true
+        lettuce.command.completion: true
+      # SLO = Service Level Objective buckets. Defines latency thresholds you care about.
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2s,5s
+      # Pre-computed percentiles exported directly (useful when Prometheus histograms are too expensive).
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
+  health:
+    redis:
+      enabled: false
+  tracing:
+    sampling:
+      # Fraction of requests to trace via OpenTelemetry/Micrometer (0.1 = 10%).
+      probability: 0.1
+  observations:
+    key-values:
+      application: ${spring.application.name}
+
+# Custom slow-query alerting threshold (used by our @Aspect-based query monitor).
+monitoring:
+  slow-query-threshold-ms: 200
+  slow-query:
+    # Disable the AOP aspect that wraps every @Repository method when repository timing is not needed.
+    enabled: true
+
+# --- Pyroscope (continuous CPU/memory profiling) ---
+# Disabled by default. Enable and set server-address for production profiling.
+pyroscope:
+  enabled: ${PYROSCOPE_ENABLED:false}
+  application-name: training-project-backend
+  server-address: ${PYROSCOPE_SERVER_ADDRESS:}
+  basic-auth-user: ${PYROSCOPE_BASIC_AUTH_USER:}
+  basic-auth-password: ${PYROSCOPE_BASIC_AUTH_PASSWORD:}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⑨ LOGGING
+# ─────────────────────────────────────────────────────────────────────────────
+logging:
+  pattern:
+    # Rolling file name pattern (Logback syntax): daily rotation with index.
+    file: training-project-backend-%d{yyyy-MM-dd}.%i.log
+  # External Logback config file — allows advanced appender setup (Loki, JSON, etc.).
+  config: ${LOGGING_CONFIG:classpath:logback-spring.xml}
+  level:
+    # Custom access log logger — logs every HTTP request/response.
+    http.access: ${HTTP_ACCESS_LOG_LEVEL:INFO}
+    # Suppress noisy OpenTelemetry exporter logs.
+    io.opentelemetry.exporter: WARN
+  # --- Grafana Loki (log aggregation) ---
+  loki:
+    enabled: ${LOKI_ENABLED:false}
+    url: ${LOKI_URL:}
+  # --- Logstash (ELK stack log shipping) ---
+  logstash:
+    enabled: ${LOGSTASH_ENABLED:false}
+    host: ${LOGSTASH_HOST:}
+    port: ${LOGSTASH_PORT:}
+  # --- Datadog (SaaS observability platform) ---
+  datadog:
+    enabled: ${DATADOG_ENABLED:false}
+  # Requests taking longer than this threshold are logged at WARN level.
+  slow-request-threshold-ms: ${LOGGING_SLOW_REQUEST_THRESHOLD_MS:500}
+  access:
+    debug-success-paths: "/api/v1/products/brands,/api/v1/products/sellers,/api/v1/users,/api/v1/cart,/api/v1/favorites"
+    expected-anonymous-unauthorized-paths: "/api/v1/auth/refresh,/api/v1/users,/api/v1/cart,/api/v1/favorites"

@@ -1,0 +1,212 @@
+name: training-project
+
+# =============================================================================
+# Shared networks and volumes
+# =============================================================================
+
+networks:
+  training-project-network:
+    name: training-project-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+
+services:
+
+  # =============================================================================
+  # Infrastructure
+  # Always-on local dependencies for app development.
+  # =============================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: training-project-postgresdb
+    pull_policy: missing
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATASOURCE_NAME:-postgres}
+      POSTGRES_USER: ${DATASOURCE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATASOURCE_PASSWORD:-postgres}
+    ports:
+      - '${DATASOURCE_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - training-project-network
+    healthcheck:
+      # Check both server readiness and the target database name so startup ordering
+      # matches the app's actual connection target.
+      test: ["CMD-SHELL", "pg_isready -U ${DATASOURCE_USERNAME:-postgres} -d ${DATASOURCE_NAME:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    # Used for token/session/cache features.
+    image: redis:7-alpine
+    container_name: training-project-redis
+    pull_policy: missing
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis-data:/data
+    networks:
+      - training-project-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Local S3-compatible object storage for development.
+  minio:
+    image: minio/minio:latest
+    container_name: training-project-minio
+    pull_policy: missing
+    restart: unless-stopped
+    command: server /data --console-address ":${MINIO_CONSOLE_CONTAINER_PORT}"
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_KEY:-minioadmin}
+    ports:
+      - '${MINIO_API_PORT}:${MINIO_API_CONTAINER_PORT}'         # S3 API
+      - '${MINIO_CONSOLE_PORT}:${MINIO_CONSOLE_CONTAINER_PORT}' # Web console
+    volumes:
+      - minio-data:/data
+    networks:
+      - training-project-network
+    healthcheck:
+      # Prefer MinIO's built-in HTTP liveness endpoint over shelling out to admin commands.
+      test: ["CMD-SHELL", "curl -fsS ${MINIO_HEALTH_URL}/minio/health/live >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Creates the buckets the backend expects on first startup.
+  minio-init:
+    image: minio/mc:latest
+    container_name: training-project-minio-init
+    pull_policy: missing
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - training-project-network
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local ${AWS_DOCKER_ENDPOINT_URL} ${AWS_ACCESS_KEY:-minioadmin} ${AWS_SECRET_KEY:-minioadmin};
+        mc mb --ignore-existing local/${AWS_PRODUCT_BUCKET:-training-project-products};
+        mc mb --ignore-existing local/${AWS_USER_BUCKET:-training-project-users};
+        mc anonymous set public local/${AWS_PRODUCT_BUCKET:-training-project-products};
+        mc anonymous set public local/${AWS_USER_BUCKET:-training-project-users};
+      "
+    restart: on-failure
+
+  # =============================================================================
+  # Application services
+  # Opt-in via compose profiles so infra can be started independently.
+  # =============================================================================
+
+  backend:
+    # Local source build. This keeps the running container aligned with the checked-out code.
+    image: training-project-backend:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        IMAGE_VERSION: local
+    container_name: training-project-backend
+    profiles: [backend]
+    # `init: true` adds a tiny init process for cleaner signal handling and zombie reaping.
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ${TRAINING_PROJECT_ENV_FILE:-.env.example}
+        required: true
+    environment:
+      DATASOURCE_HOST: postgres
+      REDIS_HOST: redis
+      AWS_ENDPOINT_URL: ${AWS_DOCKER_ENDPOINT_URL}
+      AWS_ENABLED: "true"
+      KAFKA_ENABLED: "false"
+      MIGRATION_UPLOAD_ENABLED: "false"
+    ports:
+      - '${BACKEND_HOST_PORT}:${APP_SERVER_PORT}'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - training-project-network
+
+  frontend:
+    # Frontend is built from the sibling repository when both repos are cloned locally.
+    build:
+      context: ../FrontendProject
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${FRONTEND_DOCKER_API_URL}
+        NEXT_PUBLIC_FRONTEND_URL: ${FRONTEND_URL}
+        NEXT_IMAGE_REMOTE_SOURCES: ${NEXT_IMAGE_REMOTE_SOURCES}
+        NEXT_PUBLIC_STRIPE_ENABLED: ${NEXT_PUBLIC_STRIPE_ENABLED:-false}
+        NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: ${NEXT_PUBLIC_GOOGLE_AUTH_ENABLED:-false}
+        NEXT_PUBLIC_AI_ENABLED: ${NEXT_PUBLIC_AI_ENABLED:-false}
+        NEXT_PUBLIC_EMAIL_CONFIRMATION_ENABLED: ${NEXT_PUBLIC_EMAIL_CONFIRMATION_ENABLED:-false}
+        NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+        NEXT_PUBLIC_TURNSTILE_CHECKOUT_ENABLED: ${NEXT_PUBLIC_TURNSTILE_CHECKOUT_ENABLED:-false}
+        NEXT_PUBLIC_TURNSTILE_REVIEWS_ENABLED: ${NEXT_PUBLIC_TURNSTILE_REVIEWS_ENABLED:-false}
+        NEXT_PUBLIC_TURNSTILE_AVATAR_ENABLED: ${NEXT_PUBLIC_TURNSTILE_AVATAR_ENABLED:-false}
+    container_name: training-project-frontend
+    profiles: [frontend]
+    init: true
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${FRONTEND_DOCKER_API_URL}
+      NEXT_PUBLIC_FRONTEND_URL: ${FRONTEND_URL}
+      NEXT_IMAGE_REMOTE_SOURCES: ${NEXT_IMAGE_REMOTE_SOURCES}
+      NEXT_PUBLIC_STRIPE_ENABLED: ${NEXT_PUBLIC_STRIPE_ENABLED:-false}
+      NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: ${NEXT_PUBLIC_GOOGLE_AUTH_ENABLED:-false}
+      NEXT_PUBLIC_AI_ENABLED: ${NEXT_PUBLIC_AI_ENABLED:-false}
+      NEXT_PUBLIC_EMAIL_CONFIRMATION_ENABLED: ${NEXT_PUBLIC_EMAIL_CONFIRMATION_ENABLED:-false}
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+      NEXT_PUBLIC_TURNSTILE_CHECKOUT_ENABLED: ${NEXT_PUBLIC_TURNSTILE_CHECKOUT_ENABLED:-false}
+      NEXT_PUBLIC_TURNSTILE_REVIEWS_ENABLED: ${NEXT_PUBLIC_TURNSTILE_REVIEWS_ENABLED:-false}
+      NEXT_PUBLIC_TURNSTILE_AVATAR_ENABLED: ${NEXT_PUBLIC_TURNSTILE_AVATAR_ENABLED:-false}
+      PORT: ${FRONTEND_CONTAINER_PORT}
+    ports:
+      - '${FRONTEND_HOST_PORT}:${FRONTEND_CONTAINER_PORT}'
+    extra_hosts:
+      # Lets the frontend container reach a locally running backend via host.docker.internal
+      # on Docker Desktop and modern Linux Docker with host-gateway support.
+      - "host.docker.internal:host-gateway"
+    networks:
+      - training-project-network
+
+  # =============================================================================
+  # Optional observability
+  # =============================================================================
+
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: datadog-agent
+    profiles: [monitoring]
+    pull_policy: missing
+    restart: unless-stopped
+    hostname: training-project-local
+    environment:
+      - DD_API_KEY=${DD_API_KEY:-}
+      - DD_SITE=datadoghq.eu
+      - DD_HOSTNAME=training-project-local
+      - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_HTTP_ENDPOINT=0.0.0.0:4318
+      - DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT=0.0.0.0:4317
+    ports:
+      - '4317:4317'
+      - '4318:4318'
+    networks:
+      - training-project-network

@@ -1,0 +1,48 @@
+package com.example.trainingproject.common.http;
+
+import lombok.experimental.UtilityClass;
+
+@UtilityClass
+public class ApiPaths {
+
+    public static final String API_ROOT = "/api";
+    public static final String DOCS_ROOT = "/api/docs/";
+    public static final String ACTUATOR_ROOT = "/actuator/";
+
+    public static final String AUTH = "/api/v1/auth";
+    public static final String AUTH_ROOT_PREFIX = AUTH + "/";
+    public static final String AUTH_AUTHENTICATE = AUTH + "/authenticate";
+    public static final String AUTH_REFRESH = AUTH + "/refresh";
+    public static final String AUTH_LOGOUT_ALL = AUTH + "/logout-all";
+    public static final String AUTH_PASSWORD_FORGOT = AUTH + "/password/forgot";
+    public static final String AUTH_PASSWORD_CHANGE = AUTH + "/password/change";
+    public static final String AUTH_OAUTH = AUTH + "/oauth";
+    public static final String AUTH_SESSIONS_PATTERN = AUTH + "/sessions/**";
+
+    public static final String USERS = "/api/v1/users";
+    public static final String USERS_PATTERN = USERS + "/**";
+
+    public static final String PRODUCTS = "/api/v1/products";
+    public static final String PRODUCTS_PATTERN = PRODUCTS + "/**";
+
+    public static final String CART = "/api/v1/cart";
+    public static final String CART_PATTERN = CART + "/**";
+
+    public static final String FAVORITES = "/api/v1/favorites";
+    public static final String FAVORITES_PATTERN = FAVORITES + "/**";
+
+    public static final String ORDERS = "/api/v1/orders";
+    public static final String ORDERS_PATTERN = ORDERS + "/**";
+    public static final String ADMIN_ORDERS = "/api/v1/admin/orders";
+    public static final String ADMIN_ORDERS_PATTERN = ADMIN_ORDERS + "/**";
+
+    public static final String PAYMENT = "/api/v1/payment";
+    public static final String PAYMENT_PATTERN = PAYMENT + "/**";
+
+    public static final String SUPPORT_CHAT = "/api/v1/support-chat";
+    public static final String SUPPORT_CHAT_PATTERN = SUPPORT_CHAT + "/**";
+    public static final String SUPPORT_CHAT_TELEGRAM_WEBHOOK = SUPPORT_CHAT + "/telegram/webhook";
+
+    public static final String WEBSOCKET = "/api/v1/ws";
+    public static final String WEBSOCKET_PATTERN = WEBSOCKET + "/**";
+}

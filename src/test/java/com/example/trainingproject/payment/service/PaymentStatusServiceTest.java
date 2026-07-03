@@ -1,0 +1,181 @@
+package com.example.trainingproject.payment.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.*;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.example.trainingproject.openapi.dto.CheckoutStatusDto;
+import com.example.trainingproject.openapi.dto.OrderStatus;
+import com.example.trainingproject.order.api.OrderPaymentApi;
+import com.example.trainingproject.order.api.OrderSnapshot;
+import com.example.trainingproject.order.exception.OrderNotFoundException;
+import com.example.trainingproject.payment.entity.Payment;
+import com.example.trainingproject.payment.entity.PaymentStatus;
+import com.example.trainingproject.payment.exception.PaymentAccessDeniedException;
+import com.example.trainingproject.payment.repository.PaymentRepository;
+import com.example.trainingproject.security.api.CurrentUserProvider;
+import com.example.trainingproject.security.api.dto.CurrentUserSnapshot;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("PaymentStatusService unit tests")
+class PaymentStatusServiceTest {
+
+    @Mock
+    private OrderPaymentApi orderPaymentApi;
+
+    @Mock
+    private PaymentRepository paymentRepository;
+
+    @Mock
+    private CurrentUserProvider currentUserProvider;
+
+    @Mock
+    private PaymentReconciliationService paymentReconciliationService;
+
+    @InjectMocks
+    private PaymentStatusService service;
+
+    private static final UUID ORDER_ID = UUID.randomUUID();
+    private static final UUID USER_ID = UUID.randomUUID();
+
+    @Test
+    @DisplayName("Returns PAID status for completed payment")
+    void getStatus_paid_returnsPaidStatus() {
+        OrderSnapshot order = new OrderSnapshot(
+                ORDER_ID,
+                USER_ID,
+                com.example.trainingproject.order.api.OrderStatusSnapshot.PAID,
+                java.math.BigDecimal.TEN,
+                null,
+                java.util.List.of());
+        Payment payment =
+                Payment.builder().orderId(ORDER_ID).status(PaymentStatus.PAID).build();
+
+        when(orderPaymentApi.getSnapshot(ORDER_ID)).thenReturn(order);
+        when(currentUserProvider.get()).thenReturn(currentUser());
+        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+
+        CheckoutStatusDto result = service.getStatus(ORDER_ID);
+
+        assertThat(result.getOrderId()).isEqualTo(ORDER_ID);
+        assertThat(result.getOrderStatus()).isEqualTo(OrderStatus.PAID);
+        assertThat(result.getPaymentStatus()).isEqualTo(CheckoutStatusDto.PaymentStatusEnum.PAID);
+    }
+
+    @Test
+    @DisplayName("Returns PENDING_PAYMENT status for in-progress order without session ID (no Stripe sync)")
+    void getStatus_pending_noSessionId_returnsPendingStatus() {
+        OrderSnapshot order = new OrderSnapshot(
+                ORDER_ID,
+                USER_ID,
+                com.example.trainingproject.order.api.OrderStatusSnapshot.PENDING_PAYMENT,
+                java.math.BigDecimal.TEN,
+                null,
+                java.util.List.of());
+        Payment payment = Payment.builder()
+                .orderId(ORDER_ID)
+                .providerSessionId(null)
+                .status(PaymentStatus.CREATED)
+                .build();
+
+        when(orderPaymentApi.getSnapshot(ORDER_ID)).thenReturn(order);
+        when(currentUserProvider.get()).thenReturn(currentUser());
+        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+
+        CheckoutStatusDto result = service.getStatus(ORDER_ID);
+
+        assertThat(result.getOrderStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
+        assertThat(result.getPaymentStatus()).isEqualTo(CheckoutStatusDto.PaymentStatusEnum.CREATED);
+    }
+
+    @Test
+    @DisplayName("Throws OrderNotFoundException for unknown order")
+    void getStatus_unknownOrder_throws() {
+        when(orderPaymentApi.getSnapshot(ORDER_ID))
+                .thenThrow(new com.example.trainingproject.order.exception.OrderNotFoundException(ORDER_ID));
+
+        assertThatThrownBy(() -> service.getStatus(ORDER_ID)).isInstanceOf(OrderNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("Throws PaymentAccessDeniedException for other user's order")
+    void getStatus_otherUser_throws() {
+        UUID otherUserId = UUID.randomUUID();
+        OrderSnapshot order = new OrderSnapshot(
+                ORDER_ID,
+                otherUserId,
+                com.example.trainingproject.order.api.OrderStatusSnapshot.PAID,
+                java.math.BigDecimal.TEN,
+                null,
+                java.util.List.of());
+
+        when(orderPaymentApi.getSnapshot(ORDER_ID)).thenReturn(order);
+        when(currentUserProvider.get()).thenReturn(currentUser());
+
+        assertThatThrownBy(() -> service.getStatus(ORDER_ID)).isInstanceOf(PaymentAccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("Returns status without paymentStatus when no Payment entity exists")
+    void getStatus_noPayment_returnsOrderStatusOnly() {
+        OrderSnapshot order = new OrderSnapshot(
+                ORDER_ID,
+                USER_ID,
+                com.example.trainingproject.order.api.OrderStatusSnapshot.PENDING_PAYMENT,
+                java.math.BigDecimal.TEN,
+                null,
+                java.util.List.of());
+
+        when(orderPaymentApi.getSnapshot(ORDER_ID)).thenReturn(order);
+        when(currentUserProvider.get()).thenReturn(currentUser());
+        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.empty());
+
+        CheckoutStatusDto result = service.getStatus(ORDER_ID);
+
+        assertThat(result.getOrderStatus()).isEqualTo(OrderStatus.PENDING_PAYMENT);
+        assertThat(result.getPaymentStatus()).isNull();
+    }
+
+    @Test
+    @DisplayName("Delegates Stripe sync when non-terminal payment has session ID")
+    void getStatus_nonTerminalWithSessionId_delegatesReconciliation() {
+        OrderSnapshot order = new OrderSnapshot(
+                ORDER_ID,
+                USER_ID,
+                com.example.trainingproject.order.api.OrderStatusSnapshot.PENDING_PAYMENT,
+                java.math.BigDecimal.TEN,
+                null,
+                java.util.List.of());
+        Payment payment = Payment.builder()
+                .orderId(ORDER_ID)
+                .userId(USER_ID)
+                .providerSessionId("cs_test_1")
+                .amountMinor(1000L)
+                .currency("usd")
+                .status(PaymentStatus.STRIPE_SESSION_CREATED)
+                .build();
+
+        when(orderPaymentApi.getSnapshot(ORDER_ID)).thenReturn(order);
+        when(currentUserProvider.get()).thenReturn(currentUser());
+        when(paymentRepository.findByOrderId(ORDER_ID)).thenReturn(Optional.of(payment));
+
+        CheckoutStatusDto result = service.getStatus(ORDER_ID);
+
+        assertThat(result.getPaymentStatus()).isEqualTo(CheckoutStatusDto.PaymentStatusEnum.STRIPE_SESSION_CREATED);
+        verify(paymentReconciliationService).trySyncPaidStatus(payment);
+    }
+
+    private static CurrentUserSnapshot currentUser() {
+        return new CurrentUserSnapshot(USER_ID, "user@example.com");
+    }
+}

@@ -1,0 +1,215 @@
+package com.example.trainingproject.common.validation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.Mockito.mock;
+
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import jakarta.validation.Validation;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.example.trainingproject.cart.endpoint.CartEndpoint;
+import com.example.trainingproject.favorite.endpoint.FavoritesEndpoint;
+import com.example.trainingproject.order.endpoint.AdminOrderEndpoint;
+import com.example.trainingproject.order.endpoint.OrderEndpoint;
+import com.example.trainingproject.payment.endpoint.PaymentEndpoint;
+import com.example.trainingproject.product.endpoint.ProductsEndpoint;
+import com.example.trainingproject.review.endpoint.ProductReviewsEndpoint;
+import com.example.trainingproject.review.endpoint.ReviewReactionsEndpoint;
+import com.example.trainingproject.review.endpoint.UserReviewsEndpoint;
+import com.example.trainingproject.security.endpoint.AuthenticationEndpoint;
+import com.example.trainingproject.security.endpoint.OAuthEndpoint;
+import com.example.trainingproject.security.endpoint.PasswordEndpoint;
+import com.example.trainingproject.security.endpoint.SessionsEndpoint;
+import com.example.trainingproject.supportchat.endpoint.SupportChatEndpoint;
+import com.example.trainingproject.user.endpoint.DeliveryAddressEndpoint;
+import com.example.trainingproject.user.endpoint.UserAvatarEndpoint;
+import com.example.trainingproject.user.endpoint.UserProfileEndpoint;
+
+@DisplayName("OpenAPI endpoint validation contract tests")
+class OpenApiEndpointValidationContractTest {
+
+    private static final List<Class<?>> GENERATED_API_ENDPOINTS = List.of(
+            CartEndpoint.class,
+            FavoritesEndpoint.class,
+            AdminOrderEndpoint.class,
+            OrderEndpoint.class,
+            PaymentEndpoint.class,
+            ProductsEndpoint.class,
+            ProductReviewsEndpoint.class,
+            UserReviewsEndpoint.class,
+            ReviewReactionsEndpoint.class,
+            UserProfileEndpoint.class,
+            DeliveryAddressEndpoint.class,
+            UserAvatarEndpoint.class,
+            OAuthEndpoint.class,
+            AuthenticationEndpoint.class,
+            SessionsEndpoint.class,
+            PasswordEndpoint.class,
+            SupportChatEndpoint.class);
+
+    @Test
+    @DisplayName("every production endpoint is covered by generated OpenAPI contract checks")
+    void everyProductionEndpointIsCoveredByGeneratedOpenApiContractChecks() throws Exception {
+        assertThat(GENERATED_API_ENDPOINTS)
+                .extracting(Class::getSimpleName)
+                .containsExactlyInAnyOrderElementsOf(endpointSourceClassNames());
+    }
+
+    @Test
+    @DisplayName("every generated OpenAPI operation is explicitly overridden by its endpoint")
+    void everyGeneratedOpenApiOperationHasConcreteEndpointOverride() {
+        for (Class<?> endpointClass : GENERATED_API_ENDPOINTS) {
+            generatedOpenApiOperationMethods(endpointClass)
+                    .forEach(apiMethod -> assertThatCode(() -> {
+                                Method endpointMethod = endpointClass.getDeclaredMethod(
+                                        apiMethod.getName(), apiMethod.getParameterTypes());
+                                assertThat(endpointMethod).isNotNull();
+                            })
+                            .as(
+                                    "%s must override generated OpenAPI operation %s",
+                                    endpointClass.getSimpleName(), apiMethod.getName())
+                            .doesNotThrowAnyException());
+        }
+    }
+
+    @Test
+    @DisplayName("endpoint validation metadata matches implemented generated OpenAPI interfaces")
+    void endpointValidationMetadataMatchesGeneratedApiInterfaces() {
+        assertThatCode(() -> {
+                    try (var validatorFactory = Validation.buildDefaultValidatorFactory()) {
+                        var executableValidator =
+                                validatorFactory.getValidator().forExecutables();
+                        for (Class<?> endpointClass : GENERATED_API_ENDPOINTS) {
+                            Object endpoint = instantiateWithMocks(endpointClass);
+                            for (Method apiMethod : generatedOpenApiOperationMethods(endpointClass)
+                                    .toList()) {
+                                Method endpointMethod =
+                                        endpointClass.getMethod(apiMethod.getName(), apiMethod.getParameterTypes());
+                                executableValidator.validateParameters(
+                                        endpoint, endpointMethod, dummyArguments(endpointMethod));
+                            }
+                        }
+                    }
+                })
+                .doesNotThrowAnyException();
+    }
+
+    private static Stream<Method> generatedOpenApiOperationMethods(Class<?> endpointClass) {
+        return Arrays.stream(endpointClass.getInterfaces())
+                .filter(OpenApiEndpointValidationContractTest::isGeneratedOpenApiInterface)
+                .flatMap(apiInterface -> Arrays.stream(apiInterface.getMethods()))
+                .filter(Method::isDefault)
+                .filter(method -> ResponseEntity.class.isAssignableFrom(method.getReturnType()))
+                .peek(method -> assertThat(method.getDeclaringClass().getPackageName())
+                        .startsWith("com.example.trainingproject.openapi."));
+    }
+
+    private static boolean isGeneratedOpenApiInterface(Class<?> apiInterface) {
+        return apiInterface.isInterface() && apiInterface.getPackageName().startsWith("com.example.trainingproject.openapi.");
+    }
+
+    private static Set<String> endpointSourceClassNames() throws Exception {
+        try (Stream<Path> sourceFiles = Files.walk(Path.of("src/main/java/com/example/trainingproject"))) {
+            return sourceFiles
+                    .filter(path -> path.getFileName().toString().endsWith("Endpoint.java"))
+                    .map(path -> path.getFileName().toString().replace(".java", ""))
+                    .collect(Collectors.toSet());
+        }
+    }
+
+    private static Object instantiateWithMocks(Class<?> endpointClass) throws ReflectiveOperationException {
+        Constructor<?> constructor = endpointClass.getDeclaredConstructors()[0];
+        Object[] args = new Object[constructor.getParameterCount()];
+        Class<?>[] parameterTypes = constructor.getParameterTypes();
+        for (int i = 0; i < parameterTypes.length; i++) {
+            args[i] = defaultConstructorArgument(parameterTypes[i]);
+        }
+        return constructor.newInstance(args);
+    }
+
+    private static Object defaultConstructorArgument(Class<?> parameterType) {
+        if (!parameterType.isPrimitive()) {
+            return null;
+        }
+        if (parameterType == boolean.class) {
+            return false;
+        }
+        if (parameterType == char.class) {
+            return '\0';
+        }
+        if (parameterType == byte.class) {
+            return (byte) 0;
+        }
+        if (parameterType == short.class) {
+            return (short) 0;
+        }
+        if (parameterType == int.class) {
+            return 0;
+        }
+        if (parameterType == long.class) {
+            return 0L;
+        }
+        if (parameterType == float.class) {
+            return 0F;
+        }
+        if (parameterType == double.class) {
+            return 0D;
+        }
+        throw new IllegalArgumentException("Unsupported primitive constructor parameter: " + parameterType);
+    }
+
+    private static Object[] dummyArguments(Method method) throws ReflectiveOperationException {
+        Class<?>[] parameterTypes = method.getParameterTypes();
+        Object[] args = new Object[parameterTypes.length];
+        for (int i = 0; i < parameterTypes.length; i++) {
+            args[i] = dummyValue(parameterTypes[i]);
+        }
+        return args;
+    }
+
+    private static Object dummyValue(Class<?> parameterType) throws ReflectiveOperationException {
+        if (parameterType == String.class) {
+            return "dummy";
+        }
+        if (parameterType == Integer.class || parameterType == int.class) {
+            return 1;
+        }
+        if (parameterType == UUID.class) {
+            return UUID.randomUUID();
+        }
+        if (parameterType == URI.class) {
+            return URI.create("https://example.com/callback");
+        }
+        if (parameterType == BigDecimal.class) {
+            return BigDecimal.ONE;
+        }
+        if (parameterType == LocalDate.class) {
+            return LocalDate.now();
+        }
+        if (parameterType == List.class) {
+            return List.of();
+        }
+        if (parameterType == MultipartFile.class) {
+            return mock(MultipartFile.class);
+        }
+        return parameterType.getDeclaredConstructor().newInstance();
+    }
+}

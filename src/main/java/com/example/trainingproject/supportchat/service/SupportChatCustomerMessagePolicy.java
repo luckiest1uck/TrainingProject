@@ -1,0 +1,111 @@
+package com.example.trainingproject.supportchat.service;
+
+import static com.example.trainingproject.supportchat.entity.SupportMessageDeliveryStatus.FAILED;
+
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.stereotype.Component;
+
+import com.example.trainingproject.common.monitoring.AbuseSignalRecorder;
+import com.example.trainingproject.common.turnstile.TurnstileVerificationException;
+import com.example.trainingproject.common.turnstile.TurnstileVerificationRequest;
+import com.example.trainingproject.common.turnstile.TurnstileVerifier;
+import com.example.trainingproject.ratelimit.api.RateLimiter;
+import com.example.trainingproject.supportchat.config.SupportChatProperties;
+import com.example.trainingproject.supportchat.entity.SupportMessageEntity;
+import com.example.trainingproject.supportchat.exception.DuplicateSupportChatMessageException;
+import com.example.trainingproject.supportchat.exception.SupportChatRateLimitExceededException;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Component
+class SupportChatCustomerMessagePolicy {
+
+    private final SupportChatProperties properties;
+    private final TurnstileVerifier turnstileVerifier;
+    private final SupportChatAbuseGuard abuseGuard;
+    private final RateLimiter rateLimiter;
+    private final AbuseSignalRecorder abuseSignalRecorder;
+
+    SupportChatCustomerMessagePolicy(
+            SupportChatProperties properties,
+            TurnstileVerifier turnstileVerifier,
+            SupportChatAbuseGuard abuseGuard,
+            @Qualifier("openRateLimiter") RateLimiter rateLimiter,
+            AbuseSignalRecorder abuseSignalRecorder) {
+        this.properties = properties;
+        this.turnstileVerifier = turnstileVerifier;
+        this.abuseGuard = abuseGuard;
+        this.rateLimiter = rateLimiter;
+        this.abuseSignalRecorder = abuseSignalRecorder;
+    }
+
+    void enforceCustomerMessageRules(
+            UUID userId,
+            UUID conversationId,
+            String clientIp,
+            SupportChatMessageBodyPolicy.MessageContent messageContent,
+            SupportMessageEntity previousCustomerMessage,
+            String turnstileToken) {
+        preventRepeatedMessage(conversationId, messageContent.duplicateKey(), previousCustomerMessage);
+        enforceRateLimits(userId, conversationId, clientIp);
+        verifyTurnstileIfRequired(conversationId, previousCustomerMessage, turnstileToken, clientIp);
+    }
+
+    private void preventRepeatedMessage(
+            UUID conversationId, String duplicateKey, SupportMessageEntity previousCustomerMessage) {
+        if (previousCustomerMessage == null || previousCustomerMessage.getDeliveryStatus() == FAILED) {
+            return;
+        }
+        if (!duplicateKey.equals(previousCustomerMessage.getNormalizedBody())) {
+            return;
+        }
+
+        abuseGuard.requireTurnstileForNextMessage(conversationId);
+        abuseSignalRecorder.record("support-chat", "duplicate_rejected");
+        log.info("support_chat.customer_message.duplicate_rejected: conversationId={}", conversationId);
+        throw new DuplicateSupportChatMessageException();
+    }
+
+    private void enforceRateLimits(UUID userId, UUID conversationId, String clientIp) {
+        SupportChatProperties.RateLimits rateLimits = properties.rateLimits();
+        consume(conversationId, "support-chat:user-minute:" + userId, rateLimits.perMinute(), "user-minute");
+        consume(conversationId, "support-chat:user-hour:" + userId, rateLimits.perHour(), "user-hour");
+        consume(conversationId, "support-chat:user-day:" + userId, rateLimits.perDay(), "user-day");
+        consume(
+                conversationId,
+                "support-chat:conversation-burst:" + conversationId,
+                rateLimits.perConversationBurst(),
+                "conversation-burst");
+        consume(conversationId, "support-chat:ip-minute:" + clientIp, rateLimits.perIp(), "ip-minute");
+    }
+
+    private void consume(UUID conversationId, String key, SupportChatProperties.Bucket bucket, String keyType) {
+        var result = rateLimiter.tryConsume(key, bucket.maxRequests(), bucket.windowDuration());
+        if (result.allowed()) {
+            return;
+        }
+        abuseGuard.requireTurnstileForNextMessage(conversationId);
+        abuseSignalRecorder.record("support-chat", "rate_limited");
+        log.info("support_chat.customer_message.rate_limited: conversationId={}, keyType={}", conversationId, keyType);
+        throw new SupportChatRateLimitExceededException();
+    }
+
+    private void verifyTurnstileIfRequired(
+            UUID conversationId, SupportMessageEntity previousCustomerMessage, String turnstileToken, String clientIp) {
+        if (!abuseGuard.requiresTurnstile(previousCustomerMessage, conversationId)) {
+            return;
+        }
+        try {
+            turnstileVerifier.verify(TurnstileVerificationRequest.forAction(turnstileToken, clientIp, "support_chat"));
+            abuseGuard.clearTurnstileRequirement(conversationId);
+        } catch (TurnstileVerificationException ex) {
+            abuseGuard.requireTurnstileForNextMessage(conversationId);
+            abuseSignalRecorder.record("support-chat", "turnstile_failed");
+            log.info("support_chat.turnstile.failed: conversationId={}", conversationId);
+            throw ex;
+        }
+    }
+}

@@ -1,0 +1,228 @@
+openapi: "3.0.3"
+
+info:
+  title: "Training Project Payment API"
+  description: >
+    API for Stripe Hosted Checkout integration.
+    Training Project uses Stripe test mode only — no real money is charged.
+    Use Stripe test cards for testing (e.g., 4242 4242 4242 4242).
+  version: "2.0.0"
+  contact:
+    name: "Training Project Support"
+    email: "training@example.test"
+    url: "https://example.test/training-project"
+
+servers:
+  - url: "http://localhost:8083"
+    description: "Local development server"
+  - url: "https://example.test/training-project/backend"
+    description: "Production server"
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: "Payment"
+    description: "Stripe Hosted Checkout — test mode only"
+
+paths:
+  /api/v1/payment/checkout:
+    post:
+      tags:
+        - "Payment"
+      summary: "Create order and Stripe Checkout Session"
+      description: >
+        Validates cart/address, creates a local Order (PENDING_PAYMENT),
+        creates a Stripe Hosted Checkout Session, returns the redirect URL.
+        Requires Idempotency-Key header.
+      operationId: "createCheckout"
+      parameters:
+        - name: "Idempotency-Key"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+          description: "Client-generated UUID for idempotent checkout creation."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckoutRequestDto"
+      responses:
+        "200":
+          description: "Checkout session created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponseDto"
+        "400":
+          description: "Validation error (empty cart, invalid address)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/payment/checkout/{orderId}/status:
+    get:
+      tags:
+        - "Payment"
+      summary: "Check payment status for an order"
+      description: >
+        Status endpoint for the success page to poll.
+        Returns current order and payment status. If the webhook has not arrived yet,
+        the backend may reconcile with Stripe and update local payment/order state.
+      operationId: "getCheckoutStatus"
+      parameters:
+        - name: "orderId"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+            format: "uuid"
+      responses:
+        "200":
+          description: "Current checkout status"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutStatusDto"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: "Not your order"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Order not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/payment/stripe/webhook:
+    post:
+      tags:
+        - "Payment"
+      summary: "Process Stripe webhook"
+      description: >
+        Stripe calls this endpoint to deliver checkout and refund events.
+        The Stripe-Signature header is required for webhook verification.
+      operationId: "processStripeWebhook"
+      security: []
+      parameters:
+        - name: "Stripe-Signature"
+          in: "header"
+          required: true
+          schema:
+            type: "string"
+          description: "Stripe webhook signature header."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: "string"
+      responses:
+        "200":
+          description: "Webhook accepted"
+        "400":
+          description: "Invalid webhook payload or signature"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateCheckoutRequestDto:
+      type: "object"
+      description: "Checkout request with recipient and delivery address."
+      required:
+        - recipientName
+        - recipientSurname
+      properties:
+        recipientName:
+          type: "string"
+          minLength: 2
+          maxLength: 128
+        recipientSurname:
+          type: "string"
+          minLength: 2
+          maxLength: 128
+        recipientPhone:
+          type: "string"
+          maxLength: 32
+        deliveryAddressId:
+          type: "string"
+          format: "uuid"
+          description: "ID of a saved delivery address. Mutually exclusive with address."
+        address:
+          $ref: "user-openapi.yaml#/components/schemas/AddressDto"
+        turnstileToken:
+          type: "string"
+          maxLength: 2048
+          description: "Cloudflare Turnstile verification token. Required when checkout bot protection is enabled."
+
+    CheckoutResponseDto:
+      type: "object"
+      description: "Response after creating a Stripe Checkout Session."
+      required:
+        - orderId
+        - stripeSessionId
+        - checkoutUrl
+      properties:
+        orderId:
+          type: "string"
+          format: "uuid"
+        stripeSessionId:
+          type: "string"
+        checkoutUrl:
+          type: "string"
+          format: "uri"
+
+    CheckoutStatusDto:
+      type: "object"
+      description: "Current order and payment status for polling."
+      required:
+        - orderId
+        - orderStatus
+      properties:
+        orderId:
+          type: "string"
+          format: "uuid"
+        orderStatus:
+          $ref: "order-openapi.yaml#/components/schemas/OrderStatus"
+        paymentStatus:
+          type: "string"
+          description: "Payment provider status (from Payment entity)."
+          enum:
+            - CREATED
+            - STRIPE_SESSION_CREATED
+            - AWAITING_ASYNC_CONFIRMATION
+            - PAID
+            - FAILED
+            - EXPIRED
+            - REFUNDED
+            - RECONCILIATION_FAILED
+
+    ErrorResponse:
+      $ref: "common-schemas.yaml#/components/schemas/ErrorResponse"

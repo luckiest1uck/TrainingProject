@@ -1,0 +1,56 @@
+package com.example.trainingproject.user.entity;
+
+import java.util.UUID;
+
+import jakarta.persistence.*;
+
+import lombok.*;
+
+@Getter
+@Setter
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@Entity
+@Table(name = "delivery_address")
+public class DeliveryAddressEntity {
+
+    @Id
+    @Column(name = "id", nullable = false)
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private UserEntity user;
+
+    @Column(name = "label", nullable = false, length = 64)
+    private String label;
+
+    @Column(name = "line", nullable = false, length = 256)
+    private String line;
+
+    @Column(name = "city", nullable = false, length = 128)
+    private String city;
+
+    @Column(name = "country", nullable = false, length = 128)
+    private String country;
+
+    @Column(name = "postcode", nullable = false, length = 16)
+    private String postcode;
+
+    @Column(name = "is_default", nullable = false)
+    private boolean isDefault;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof DeliveryAddressEntity that)) return false;
+        return id != null && id.equals(that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+}

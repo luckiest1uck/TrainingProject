@@ -1,0 +1,105 @@
+# =============================================================================
+#                    TRAINING PROJECT — DEV PROFILE OVERRIDES
+# =============================================================================
+# Activated by: SPRING_PROFILES_ACTIVE=dev
+# Purpose: Full developer experience — verbose errors, SQL logging, DB reseeding,
+#          100% tracing, and DEBUG-level app logs.
+# =============================================================================
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SERVER — expose full error details for debugging
+# ─────────────────────────────────────────────────────────────────────────────
+server:
+  error:
+    include-stacktrace: always
+    include-message: always
+    include-binding-errors: always
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SPRING CORE
+# ─────────────────────────────────────────────────────────────────────────────
+spring:
+  output:
+    ansi:
+      # Colored console output for local terminal readability.
+      enabled: always
+  liquibase:
+    # Drop and recreate all tables on every restart — fresh seed data each time.
+    drop-first: true
+  jpa:
+    # Print SQL statements to console for debugging queries.
+    show-sql: true
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OBSERVABILITY — maximum visibility for local debugging
+# ─────────────────────────────────────────────────────────────────────────────
+sentry:
+  trace-critical-sample-rate: 1.0
+  trace-user-facing-sample-rate: 1.0
+  trace-default-sample-rate: 1.0
+  # Profile 100% of traced transactions for debugging.
+  profiles-sample-rate: 1.0
+  # Prints Sentry SDK internals to console (useful when debugging Sentry integration itself).
+  debug: true
+
+management:
+  endpoint:
+    health:
+      # Show full health check details without authentication in dev.
+      show-details: always
+  tracing:
+    sampling:
+      # Trace 100% of requests locally for full visibility.
+      probability: 1.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOGGING — verbose output for development
+# ─────────────────────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.example: DEBUG
+    # Log every HTTP request/response at DEBUG level for full visibility.
+    http.access: DEBUG
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RATE LIMITING — relaxed for local browser/E2E runs
+# ─────────────────────────────────────────────────────────────────────────────
+security:
+  rate-limit:
+    global:
+      max-requests: 100000
+      window-duration: PT1M
+    auth:
+      max-requests: 100000
+      window-duration: PT1M
+    search:
+      max-requests: 100000
+      window-duration: PT1M
+    telemetry:
+      max-requests: 100000
+      window-duration: PT1M
+    pre-auth:
+      max-requests: 100000
+      window-duration: PT1M
+    payment:
+      max-requests: 100000
+      window-duration: PT1M
+    write:
+      max-requests: 100000
+      window-duration: PT1M
+    file-upload:
+      max-requests: 100000
+      window-duration: PT1M
+    ban-threshold: 100000
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KAFKA — disabled for local contributor development
+# ─────────────────────────────────────────────────────────────────────────────
+kafka:
+  enabled: false

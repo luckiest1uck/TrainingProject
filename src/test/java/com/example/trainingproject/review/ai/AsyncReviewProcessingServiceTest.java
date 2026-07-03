@@ -1,0 +1,93 @@
+package com.example.trainingproject.review.ai;
+
+import static org.mockito.Mockito.*;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.example.trainingproject.product.api.ProductReviewProductApi;
+import com.example.trainingproject.review.entity.ProductReview;
+import com.example.trainingproject.review.exception.ReviewModerationException;
+import com.example.trainingproject.review.repository.ProductReviewRepository;
+import com.example.trainingproject.review.service.ai.AsyncReviewProcessingService;
+import com.example.trainingproject.review.service.ai.moderation.ReviewModerationService;
+import com.example.trainingproject.review.service.ai.summary.ProductReviewSummaryDebouncer;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("AsyncReviewProcessingService unit tests")
+class AsyncReviewProcessingServiceTest {
+
+    @Mock
+    private ReviewModerationService moderationService;
+
+    @Mock
+    private ProductReviewRepository reviewRepository;
+
+    @Mock
+    private ProductReviewProductApi productReviewProductGateway;
+
+    @Mock
+    private ProductReviewSummaryDebouncer summaryDebouncer;
+
+    @InjectMocks
+    private AsyncReviewProcessingService service;
+
+    @Test
+    @DisplayName("does nothing else when moderation passes")
+    void doesNothingElseWhenModerationPasses() {
+        UUID reviewId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ProductReview review = ProductReview.builder()
+                .id(reviewId)
+                .productId(productId)
+                .text("Great coffee")
+                .build();
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+
+        service.processByReviewId(reviewId);
+
+        verify(reviewRepository).findById(reviewId);
+        verify(moderationService).moderate("Great coffee");
+        verifyNoInteractions(productReviewProductGateway, summaryDebouncer);
+    }
+
+    @Test
+    @DisplayName("deletes rejected reviews and refreshes product aggregates when the review still exists")
+    void deletesRejectedReviewsAndRefreshesProductAggregatesWhenReviewStillExists() {
+        UUID reviewId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ProductReview review = ProductReview.builder()
+                .id(reviewId)
+                .productId(productId)
+                .text("spam")
+                .build();
+        doThrow(new ReviewModerationException("spam")).when(moderationService).moderate("spam");
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+
+        service.processByReviewId(reviewId);
+
+        verify(reviewRepository).deleteById(reviewId);
+        verify(productReviewProductGateway).refreshReviewAggregates(productId);
+        verify(summaryDebouncer).schedule(productId);
+    }
+
+    @Test
+    @DisplayName("ignores processing when the review has already disappeared")
+    void ignoresProcessingWhenReviewHasAlreadyDisappeared() {
+        UUID reviewId = UUID.randomUUID();
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.empty());
+
+        service.processByReviewId(reviewId);
+
+        verify(reviewRepository).findById(reviewId);
+        verifyNoInteractions(moderationService);
+        verifyNoInteractions(productReviewProductGateway, summaryDebouncer);
+    }
+}

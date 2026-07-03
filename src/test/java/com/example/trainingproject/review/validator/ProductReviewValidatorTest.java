@@ -1,0 +1,223 @@
+package com.example.trainingproject.review.validator;
+
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.example.trainingproject.common.exception.BadRequestException;
+import com.example.trainingproject.product.api.ProductReviewProductApi;
+import com.example.trainingproject.review.entity.ProductReview;
+import com.example.trainingproject.review.exception.ReviewAccessDeniedException;
+import com.example.trainingproject.review.exception.ReviewConflictException;
+import com.example.trainingproject.review.exception.ReviewNotFoundException;
+import com.example.trainingproject.review.exception.ReviewProductNotFoundException;
+import com.example.trainingproject.review.repository.ProductReviewRepository;
+import com.example.trainingproject.review.service.validator.ProductReviewValidator;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("ProductReviewValidator unit tests")
+class ProductReviewValidatorTest {
+
+    @Mock
+    private ProductReviewRepository productReviewRepository;
+
+    @Mock
+    private ProductReviewProductApi productReviewProductGateway;
+
+    @InjectMocks
+    private ProductReviewValidator validator;
+
+    // ── validateReviewText ──────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("validateReviewText: non-blank text passes")
+    void validateReviewTextNonBlankNoException() {
+        assertThatCode(() -> validator.validateReviewText("Great coffee!")).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateReviewText: blank text throws BadRequestException")
+    void validateReviewTextBlankThrowsBadRequestException() {
+        assertThatThrownBy(() -> validator.validateReviewText("   ")).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("validateReviewText: empty string throws BadRequestException")
+    void validateReviewTextEmptyThrowsBadRequestException() {
+        assertThatThrownBy(() -> validator.validateReviewText("")).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("validateReviewText: null text throws BadRequestException")
+    void validateReviewTextNullThrowsBadRequestException() {
+        assertThatThrownBy(() -> validator.validateReviewText(null)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("validateReviewText: text with forbidden characters throws BadRequestException")
+    void validateReviewTextForbiddenCharsThrowsBadRequestException() {
+        assertThatThrownBy(() -> validator.validateReviewText("Bad <script>")).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("validateProductRating: valid boundary ratings pass")
+    void validateProductRatingValidBoundariesNoException() {
+        assertThatCode(() -> validator.validateProductRating(1)).doesNotThrowAnyException();
+        assertThatCode(() -> validator.validateProductRating(5)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateProductRating: null rating throws BadRequestException")
+    void validateProductRatingNullThrowsBadRequestException() {
+        assertThatThrownBy(() -> validator.validateProductRating(null)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("validateProductRating: out of range rating throws BadRequestException")
+    void validateProductRatingOutOfRangeThrowsBadRequestException() {
+        assertThatThrownBy(() -> validator.validateProductRating(0)).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> validator.validateProductRating(6)).isInstanceOf(BadRequestException.class);
+    }
+
+    // ── validateProductExists ───────────────────────────────────────────────
+
+    @Test
+    @DisplayName("validateProductExists: existing product passes")
+    void validateProductExistsProductFoundNoException() {
+        UUID productId = UUID.randomUUID();
+        when(productReviewProductGateway.exists(productId)).thenReturn(true);
+
+        assertThatCode(() -> validator.validateProductExists(productId)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateProductExists: missing product throws ReviewProductNotFoundException")
+    void validateProductExistsProductNotFoundThrowsReviewProductNotFoundException() {
+        UUID productId = UUID.randomUUID();
+        when(productReviewProductGateway.exists(productId)).thenReturn(false);
+
+        assertThatThrownBy(() -> validator.validateProductExists(productId))
+                .isInstanceOf(ReviewProductNotFoundException.class);
+    }
+
+    // ── validateReviewExistsForUser ─────────────────────────────────────────
+
+    @Test
+    @DisplayName("validateReviewExistsForUser: no existing review passes")
+    void validateReviewExistsForUserNoReviewNoException() {
+        UUID userId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        when(productReviewRepository.findByUserIdAndProductId(userId, productId))
+                .thenReturn(Optional.empty());
+
+        assertThatCode(() -> validator.validateReviewExistsForUser(userId, productId))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateReviewExistsForUser: existing review throws ReviewConflictException")
+    void validateReviewExistsForUserReviewExistsThrowsReviewConflictException() {
+        UUID userId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        ProductReview existing = ProductReview.builder().id(UUID.randomUUID()).build();
+        when(productReviewRepository.findByUserIdAndProductId(userId, productId))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> validator.validateReviewExistsForUser(userId, productId))
+                .isInstanceOf(ReviewConflictException.class);
+    }
+
+    // ── validateProductReviewDeletionAllowed ────────────────────────────────
+
+    @Test
+    @DisplayName("validateProductReviewDeletionAllowed: owner can delete")
+    void validateProductReviewDeletionAllowedOwnerDeletesNoException() {
+        UUID userId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        ProductReview review =
+                ProductReview.builder().id(reviewId).userId(userId).build();
+
+        when(productReviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+
+        assertThatCode(() -> validator.validateProductReviewDeletionAllowed(reviewId, userId))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateProductReviewDeletionAllowed: non-owner throws ReviewAccessDeniedException")
+    void validateProductReviewDeletionAllowedNonOwnerThrowsReviewAccessDeniedException() {
+        UUID currentUserId = UUID.randomUUID();
+        UUID reviewOwnerId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        ProductReview review =
+                ProductReview.builder().id(reviewId).userId(reviewOwnerId).build();
+
+        when(productReviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+
+        assertThatThrownBy(() -> validator.validateProductReviewDeletionAllowed(reviewId, currentUserId))
+                .isInstanceOf(ReviewAccessDeniedException.class);
+    }
+
+    // ── validateProductIdIsValid ────────────────────────────────────────────
+
+    @Test
+    @DisplayName("validateProductIdIsValid: review belongs to product passes")
+    void validateProductIdIsValidReviewBelongsToProductNoException() {
+        UUID productId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        when(productReviewProductGateway.exists(productId)).thenReturn(true);
+        when(productReviewRepository.existsByIdAndProductId(reviewId, productId))
+                .thenReturn(true);
+
+        assertThatCode(() -> validator.validateProductIdIsValid(productId, reviewId))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("validateProductIdIsValid: product missing throws ReviewProductNotFoundException")
+    void validateProductIdIsValidProductMissingThrowsReviewProductNotFoundException() {
+        UUID productId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        when(productReviewProductGateway.exists(productId)).thenReturn(false);
+
+        assertThatThrownBy(() -> validator.validateProductIdIsValid(productId, reviewId))
+                .isInstanceOf(ReviewProductNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("validateProductIdIsValid: review missing throws ReviewNotFoundException")
+    void validateProductIdIsValidReviewMissingThrowsReviewNotFoundException() {
+        UUID productId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        when(productReviewProductGateway.exists(productId)).thenReturn(true);
+        when(productReviewRepository.existsByIdAndProductId(reviewId, productId))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> validator.validateProductIdIsValid(productId, reviewId))
+                .isInstanceOf(ReviewNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName(
+            "validateProductIdIsValid: review exists but belongs to different product throws ReviewNotFoundException")
+    void validateProductIdIsValidReviewBelongsToDifferentProductThrowsReviewNotFoundException() {
+        UUID productId = UUID.randomUUID();
+        UUID reviewId = UUID.randomUUID();
+        when(productReviewProductGateway.exists(productId)).thenReturn(true);
+        when(productReviewRepository.existsByIdAndProductId(reviewId, productId))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> validator.validateProductIdIsValid(productId, reviewId))
+                .isInstanceOf(ReviewNotFoundException.class);
+    }
+}

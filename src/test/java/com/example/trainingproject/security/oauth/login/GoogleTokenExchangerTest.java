@@ -1,0 +1,226 @@
+package com.example.trainingproject.security.oauth.login;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.io.IOException;
+import java.net.URI;
+import java.security.GeneralSecurityException;
+import java.time.Duration;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import com.google.api.client.googleapis.auth.oauth2.*;
+import com.google.api.client.http.GenericUrl;
+import com.google.api.client.testing.http.MockHttpTransport;
+import com.example.trainingproject.common.exception.UnauthorizedException;
+import com.example.trainingproject.security.oauth.config.GoogleOAuthProperties;
+import com.example.trainingproject.security.oauth.dto.OAuthProfile;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("GoogleTokenExchanger unit tests")
+class GoogleTokenExchangerTest {
+
+    @Mock
+    private GoogleAuthorizationCodeFlow flow;
+
+    @Mock
+    private GoogleAuthorizationCodeTokenRequest tokenRequest;
+
+    @Mock
+    private GoogleIdTokenVerifier verifier;
+
+    @Mock
+    private GoogleTokenResponse tokenResponse;
+
+    @Mock
+    private GoogleIdToken idToken;
+
+    @Test
+    @DisplayName("buildAuthorizationUri includes Google OAuth parameters")
+    void buildAuthorizationUriIncludesGoogleOauthParameters() {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+
+        URI uri = exchanger.buildAuthorizationUri("state-token");
+
+        assertThat(uri.toString())
+                .contains("https://accounts.google.com/o/oauth2/v2/auth")
+                .contains("scope=openid%20email%20profile")
+                .contains("access_type=offline")
+                .contains("response_type=code")
+                .contains("redirect_uri=https://app.example.com/callback")
+                .contains("client_id=client-id")
+                .contains("state=state-token");
+    }
+
+    @Test
+    @DisplayName("request initializer applies configured HTTP timeouts")
+    void requestInitializerAppliesConfiguredHttpTimeouts() throws IOException {
+        var initializer = GoogleTokenExchanger.requestInitializer(Duration.ofSeconds(2), Duration.ofSeconds(3));
+        var request = new MockHttpTransport()
+                .createRequestFactory(initializer)
+                .buildGetRequest(new GenericUrl("https://accounts.google.com"));
+
+        assertThat(request.getConnectTimeout()).isEqualTo(2_000);
+        assertThat(request.getReadTimeout()).isEqualTo(3_000);
+    }
+
+    @Test
+    @DisplayName("exchange sets the redirect URI, verifies the ID token, and returns its payload")
+    void exchangeSetsRedirectUriVerifiesIdTokenAndReturnsPayload() throws GeneralSecurityException, IOException {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+        GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+
+        when(flow.newTokenRequest("auth-code")).thenReturn(tokenRequest);
+        when(tokenRequest.setRedirectUri("https://app.example.com/callback")).thenReturn(tokenRequest);
+        when(tokenRequest.execute()).thenReturn(tokenResponse);
+        when(tokenResponse.get("id_token")).thenReturn("id-token");
+        when(verifier.verify("id-token")).thenReturn(idToken);
+        when(idToken.getPayload()).thenReturn(payload);
+
+        GoogleIdToken.Payload result = exchanger.exchange("auth-code");
+
+        assertThat(result).isSameAs(payload);
+        verify(tokenRequest).setRedirectUri("https://app.example.com/callback");
+        verify(verifier).verify("id-token");
+    }
+
+    @Test
+    @DisplayName("exchangeCode maps Google payload to provider-neutral profile")
+    void exchangeCodeMapsGooglePayloadToProviderNeutralProfile() throws GeneralSecurityException, IOException {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+        GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+        payload.setSubject("google-subject");
+        payload.setEmail("user@example.com");
+        payload.setEmailVerified(true);
+        payload.put("given_name", "Ada");
+        payload.put("family_name", "Lovelace");
+
+        when(flow.newTokenRequest("auth-code")).thenReturn(tokenRequest);
+        when(tokenRequest.setRedirectUri("https://app.example.com/callback")).thenReturn(tokenRequest);
+        when(tokenRequest.execute()).thenReturn(tokenResponse);
+        when(tokenResponse.get("id_token")).thenReturn("id-token");
+        when(verifier.verify("id-token")).thenReturn(idToken);
+        when(idToken.getPayload()).thenReturn(payload);
+
+        OAuthProfile profile = exchanger.exchangeCode("auth-code");
+
+        assertThat(profile.providerSubject()).isEqualTo("google-subject");
+        assertThat(profile.email()).isEqualTo("user@example.com");
+        assertThat(profile.emailVerified()).isTrue();
+        assertThat(profile.firstName()).isEqualTo("Ada");
+        assertThat(profile.lastName()).isEqualTo("Lovelace");
+    }
+
+    @Test
+    @DisplayName("exchangeCode rejects Google payloads without required identity fields")
+    void exchangeCodeRejectsGooglePayloadsWithoutRequiredIdentityFields() throws GeneralSecurityException, IOException {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+        GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+        payload.setSubject("google-subject");
+        payload.setEmail(null);
+        payload.setEmailVerified(true);
+
+        when(flow.newTokenRequest("auth-code")).thenReturn(tokenRequest);
+        when(tokenRequest.setRedirectUri("https://app.example.com/callback")).thenReturn(tokenRequest);
+        when(tokenRequest.execute()).thenReturn(tokenResponse);
+        when(tokenResponse.get("id_token")).thenReturn("id-token");
+        when(verifier.verify("id-token")).thenReturn(idToken);
+        when(idToken.getPayload()).thenReturn(payload);
+
+        assertThatThrownBy(() -> exchanger.exchangeCode("auth-code"))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Google authentication failed: ID token is missing required identity fields.");
+    }
+
+    @Test
+    @DisplayName("exchangeCode rejects Google ID tokens without payload")
+    void exchangeCodeRejectsGoogleIdTokensWithoutPayload() throws GeneralSecurityException, IOException {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+
+        when(flow.newTokenRequest("auth-code")).thenReturn(tokenRequest);
+        when(tokenRequest.setRedirectUri("https://app.example.com/callback")).thenReturn(tokenRequest);
+        when(tokenRequest.execute()).thenReturn(tokenResponse);
+        when(tokenResponse.get("id_token")).thenReturn("id-token");
+        when(verifier.verify("id-token")).thenReturn(idToken);
+        when(idToken.getPayload()).thenReturn(null);
+
+        assertThatThrownBy(() -> exchanger.exchangeCode("auth-code"))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Google authentication failed: ID token is missing required identity fields.");
+    }
+
+    @Test
+    @DisplayName("exchangeCode rejects Google payloads without subject")
+    void exchangeCodeRejectsGooglePayloadsWithoutSubject() throws GeneralSecurityException, IOException {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+        GoogleIdToken.Payload payload = new GoogleIdToken.Payload();
+        payload.setEmail("user@example.com");
+        payload.setEmailVerified(true);
+
+        when(flow.newTokenRequest("auth-code")).thenReturn(tokenRequest);
+        when(tokenRequest.setRedirectUri("https://app.example.com/callback")).thenReturn(tokenRequest);
+        when(tokenRequest.execute()).thenReturn(tokenResponse);
+        when(tokenResponse.get("id_token")).thenReturn("id-token");
+        when(verifier.verify("id-token")).thenReturn(idToken);
+        when(idToken.getPayload()).thenReturn(payload);
+
+        assertThatThrownBy(() -> exchanger.exchangeCode("auth-code"))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Google authentication failed: ID token is missing required identity fields.");
+    }
+
+    @Test
+    @DisplayName("exchange rejects unverifiable ID tokens")
+    void exchangeRejectsUnverifiableIdTokens() throws GeneralSecurityException, IOException {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+
+        when(flow.newTokenRequest("auth-code")).thenReturn(tokenRequest);
+        when(tokenRequest.setRedirectUri("https://app.example.com/callback")).thenReturn(tokenRequest);
+        when(tokenRequest.execute()).thenReturn(tokenResponse);
+        when(tokenResponse.get("id_token")).thenReturn("id-token");
+        when(verifier.verify("id-token")).thenReturn(null);
+
+        assertThatThrownBy(() -> exchanger.exchange("auth-code"))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Google authentication failed: ID token could not be verified.");
+    }
+
+    @Test
+    @DisplayName("exchange rejects token responses without an ID token")
+    void exchangeRejectsTokenResponsesWithoutIdToken() throws IOException {
+        GoogleTokenExchanger exchanger = exchangerWithMocks();
+
+        when(flow.newTokenRequest("auth-code")).thenReturn(tokenRequest);
+        when(tokenRequest.setRedirectUri("https://app.example.com/callback")).thenReturn(tokenRequest);
+        when(tokenRequest.execute()).thenReturn(tokenResponse);
+        when(tokenResponse.get("id_token")).thenReturn(" ");
+
+        assertThatThrownBy(() -> exchanger.exchange("auth-code"))
+                .isInstanceOf(UnauthorizedException.class)
+                .hasMessage("Google authentication failed: token response did not include a valid ID token.");
+    }
+
+    private GoogleTokenExchanger exchangerWithMocks() {
+        var auth = new GoogleOAuthProperties.Auth(
+                new GoogleOAuthProperties.Auth.Server("https://accounts.google.com/o/oauth2/v2/auth"));
+        var properties = new GoogleOAuthProperties(
+                "client-id",
+                "client-secret",
+                "https://app.example.com/callback",
+                "openid email profile",
+                new GoogleOAuthProperties.Timeout(Duration.ofSeconds(2), Duration.ofSeconds(3)),
+                auth);
+        GoogleTokenExchanger exchanger = new GoogleTokenExchanger(properties);
+        ReflectionTestUtils.setField(exchanger, "flow", flow);
+        ReflectionTestUtils.setField(exchanger, "verifier", verifier);
+        return exchanger;
+    }
+}

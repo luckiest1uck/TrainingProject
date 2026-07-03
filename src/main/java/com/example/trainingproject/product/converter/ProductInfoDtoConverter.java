@@ -1,0 +1,45 @@
+package com.example.trainingproject.product.converter;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+
+import org.jspecify.annotations.Nullable;
+import org.mapstruct.*;
+import org.springframework.data.domain.Page;
+
+import com.example.trainingproject.openapi.dto.ProductInfoDto;
+import com.example.trainingproject.openapi.dto.ProductListWithPaginationInfoDto;
+import com.example.trainingproject.product.api.dto.ProductSnapshot;
+import com.example.trainingproject.product.entity.ProductInfo;
+
+@SuppressWarnings("NullableProblems")
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING, unmappedTargetPolicy = ReportingPolicy.ERROR)
+public interface ProductInfoDtoConverter {
+
+    @Named("toProductInfoDto")
+    @Mapping(target = "averageRating", source = "averageRating", qualifiedByName = "roundAverageRatingValue")
+    @Mapping(target = "dateAdded", source = "dateAdded", qualifiedByName = "localToOffsetDate")
+    @Mapping(target = "productFileUrl", ignore = true)
+    @Mapping(target = "productImageUrls", ignore = true)
+    ProductInfoDto toDto(ProductInfo entity);
+
+    @Mapping(target = "products", source = "content")
+    @Mapping(target = "page", source = "number")
+    @Mapping(target = "size", source = "size")
+    ProductListWithPaginationInfoDto toProductPaginationDto(Page<ProductInfoDto> pageProductResponseDto);
+
+    ProductSnapshot toSnapshot(ProductInfoDto dto);
+
+    @Named("roundAverageRatingValue")
+    default @Nullable BigDecimal roundAverageRatingValue(@Nullable BigDecimal averageRating) {
+        return (averageRating == null) ? null : averageRating.setScale(1, RoundingMode.HALF_UP);
+    }
+
+    @Named("localToOffsetDate")
+    default @Nullable OffsetDateTime localToOffsetDate(@Nullable LocalDateTime value) {
+        return (value == null) ? null : value.atOffset(ZoneOffset.UTC);
+    }
+}

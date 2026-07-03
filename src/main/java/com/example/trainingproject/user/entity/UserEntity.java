@@ -1,0 +1,114 @@
+package com.example.trainingproject.user.entity;
+
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+
+import com.example.trainingproject.common.audit.AuditableEntity;
+import com.example.trainingproject.common.audit.Identifiable;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
+
+@Builder
+@Getter
+@Setter
+@AllArgsConstructor
+@NoArgsConstructor
+@ToString(onlyExplicitlyIncluded = true)
+@Entity
+@Table(name = "user_details")
+public class UserEntity extends AuditableEntity implements Identifiable {
+
+    @Id
+    @Column(name = "id", nullable = false)
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @ToString.Include
+    private UUID id;
+
+    @Column(name = "first_name", nullable = false, length = 128)
+    private String firstName;
+
+    @Column(name = "last_name", nullable = false, length = 128)
+    private String lastName;
+
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
+
+    @Column(name = "phone_number", length = 25)
+    private String phoneNumber;
+
+    @Column(name = "email", nullable = false, unique = true, length = 254)
+    private String email;
+
+    @Column(name = "password", nullable = false)
+    private String password;
+
+    @OneToOne(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "address_id", referencedColumnName = "id")
+    private Address address;
+
+    @Column(name = "stripe_customer_token", unique = true, length = 64)
+    private String stripeCustomerToken;
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
+    @Builder.Default
+    private Set<UserGrantedAuthority> authorities = new HashSet<>();
+
+    @Column(name = "account_non_expired", nullable = false)
+    private boolean accountNonExpired;
+
+    @Column(name = "account_non_locked", nullable = false)
+    private boolean accountNonLocked;
+
+    @Column(name = "credentials_non_expired", nullable = false)
+    private boolean credentialsNonExpired;
+
+    @Column(name = "enabled", nullable = false)
+    private boolean enabled;
+
+    @Column(name = "oauth_user", nullable = false)
+    private boolean oauthUser;
+
+    public void addAuthority(UserGrantedAuthority authority) {
+        Objects.requireNonNull(authority, "authority must not be null");
+        String authorityName = Objects.requireNonNull(authority.getAuthority(), "authority name must not be null");
+        boolean alreadyGranted = this.authorities.stream()
+                .map(UserGrantedAuthority::getAuthority)
+                .anyMatch(authorityName::equals);
+        if (alreadyGranted) {
+            return;
+        }
+        this.authorities.add(authority);
+        authority.setUser(this);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof UserEntity user)) return false;
+        return id != null && id.equals(user.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+}

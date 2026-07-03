@@ -1,0 +1,625 @@
+openapi: "3.0.3"
+
+info:
+  title: "Training Project Security API"
+  description: "API for accessing security and related operations in the TrainingProject platform"
+  version: "1.0.0"
+  contact:
+    name: "Training Project Support"
+    email: "training@example.test"
+    url: "https://example.test/training-project"
+
+servers:
+  - url: "http://localhost:8083"
+    description: "Local development server"
+  - url: "https://example.test/training-project/backend"
+    description: "Production server"
+
+tags:
+  - name: "OAuth"
+    description: "OAuth sign-in and token handoff operations"
+  - name: "Authentication"
+    description: "User registration, email confirmation, and credential authentication"
+  - name: "Sessions"
+    description: "Authentication token, logout, and session management operations"
+  - name: "Password"
+    description: "Password reset operations"
+
+paths:
+  /api/v1/auth/oauth/{provider}:
+    get:
+      tags:
+        - "OAuth"
+      summary: "Start OAuth sign-in"
+      operationId: "initiateOAuth"
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "OAuth provider identifier, for example google or github."
+        - name: redirectUrl
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+          description: "Frontend callback URL to return to after OAuth completes."
+      responses:
+        "302":
+          description: "Redirect to the OAuth provider authorization URL."
+        "404":
+          description: "OAuth provider is not supported."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: "OAuth provider is not available."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/oauth/{provider}/callback:
+    get:
+      tags:
+        - "OAuth"
+      summary: "Complete OAuth sign-in"
+      operationId: "completeOAuthCallback"
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "OAuth provider identifier, for example google or github."
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "OAuth authorization code returned by the provider."
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "State token created during OAuth initiation."
+      responses:
+        "302":
+          description: "Redirect to the frontend callback or sign-in error URL."
+        "404":
+          description: "OAuth provider is not supported."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/oauth/token:
+    post:
+      tags:
+        - "OAuth"
+      summary: "Exchange OAuth handoff code for tokens"
+      operationId: "completeOAuthTokenHandoff"
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 43
+            maxLength: 43
+            pattern: "^[A-Za-z0-9_-]{43}$"
+          description: "Short-lived one-time OAuth handoff code from the frontend callback fragment."
+      responses:
+        "200":
+          description: "OAuth token handoff completed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAuthenticationResponse"
+        "400":
+          description: "Invalid or expired OAuth handoff code."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/register:
+    post:
+      tags:
+        - "Authentication"
+      summary: "Register a new user"
+      operationId: "register"
+      requestBody:
+        description: "User registration data"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegistrationRequest"
+      responses:
+        "200":
+          description: "Registration successful. Returns tokens when email verification is disabled, or empty body when verification email was sent."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAuthenticationResponse"
+        "400":
+          description: "Bad request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "Email is already registered"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/confirm:
+    post:
+      tags:
+        - "Authentication"
+      summary: "Confirm user's email"
+      operationId: "confirmEmail"
+      requestBody:
+        description: "Email confirmation data"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmEmailRequest"
+      responses:
+        "201":
+          description: "Email verification completed"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserRegistrationResponse"
+        "400":
+          description: "Bad request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/authenticate:
+    post:
+      tags:
+        - "Authentication"
+      summary: "Authenticate a user"
+      operationId: "authenticate"
+      requestBody:
+        description: "User credentials"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserAuthenticationRequest"
+      responses:
+        "200":
+          description: "Authentication successful"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAuthenticationResponse"
+        "400":
+          description: "Bad request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - "Sessions"
+      summary: "Logout a user"
+      operationId: "logout"
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Refresh-Token
+          in: header
+          required: false
+          description: "Raw refresh token value to invalidate (no 'Bearer' prefix). Obtain from the refreshToken field of the authentication response."
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Logout successful"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - "Sessions"
+      summary: "Refresh user authentication token"
+      operationId: "refreshToken"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "Token refreshed successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAuthenticationResponse"
+        "201":
+          description: "New session created (legacy token migrated)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserAuthenticationResponse"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/logout-all:
+    post:
+      tags:
+        - "Sessions"
+      summary: "Revoke all active sessions for the current user"
+      operationId: "logoutAll"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "All sessions revoked"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/sessions:
+    get:
+      tags:
+        - "Sessions"
+      summary: "List active sessions for the current user"
+      operationId: "getSessions"
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "Active sessions"
+          content:
+            application/json:
+              schema:
+                title: "SessionInfoList"
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionInfo"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/sessions/{sessionId}:
+    delete:
+      tags:
+        - "Sessions"
+      summary: "Revoke a specific session by ID"
+      operationId: "revokeSession"
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: "Session revoked"
+        "401":
+          description: "Unauthorized"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: "Session not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/password/forgot:
+    post:
+      tags:
+        - "Password"
+      summary: "Request password reset"
+      operationId: "forgotPassword"
+      requestBody:
+        description: "Email address of the user requesting a password reset"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+      responses:
+        "200":
+          description: "Password reset request accepted"
+        "400":
+          description: "Bad request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/auth/password/change:
+    post:
+      tags:
+        - "Password"
+      summary: "Change user password"
+      operationId: "changePassword"
+      requestBody:
+        description: "Password change request data"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: "Password changed successfully"
+        "400":
+          description: "Bad request"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: "Internal server error"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "JWT token for authenticated requests"
+
+  schemas:
+    UserRegistrationRequest:
+      type: "object"
+      required:
+        - firstName
+        - lastName
+        - email
+        - password
+      properties:
+        firstName:
+          type: "string"
+          description: "User's first name."
+          minLength: 2
+          maxLength: 64
+          pattern: "^[a-zA-Z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u00FF\\s''\\u2019\\-]+$"
+        lastName:
+          type: "string"
+          description: "User's last name."
+          minLength: 2
+          maxLength: 64
+          pattern: "^[a-zA-Z\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u00FF\\s''\\u2019\\-]+$"
+        birthDate:
+          type: "string"
+          format: "date"
+          description: "User's birth date in YYYY-MM-DD format."
+        phoneNumber:
+          type: "string"
+          description: "User's phone number."
+        email:
+          type: "string"
+          format: "email"
+          minLength: 1
+          maxLength: 254
+          description: "User's email address."
+        password:
+          $ref: "#/components/schemas/PasswordField"
+        addressDto:
+          $ref: "./user-openapi.yaml#/components/schemas/AddressDto"
+        turnstileToken:
+          type: "string"
+          maxLength: 2048
+          description: "Cloudflare Turnstile verification token. Required in production."
+
+    UserRegistrationResponse:
+      $ref: "#/components/schemas/UserAuthenticationResponse"
+
+    UserAuthenticationRequest:
+      type: "object"
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: "string"
+          format: "email"
+          minLength: 1
+          maxLength: 254
+          description: "User's email address."
+        password:
+          type: "string"
+          description: "User's password. No pattern validation on login — legacy passwords may not match current rules."
+          minLength: 1
+          maxLength: 128
+        turnstileToken:
+          type: "string"
+          maxLength: 2048
+          description: "Cloudflare Turnstile verification token. Required in production."
+
+    UserAuthenticationResponse:
+      type: "object"
+      required:
+        - token
+        - refreshToken
+      properties:
+        token:
+          type: "string"
+          description: "JWT token for authenticated user."
+        refreshToken:
+          type: "string"
+          description: "Refresh token for generating a new JWT."
+
+    ConfirmEmailRequest:
+      type: "object"
+      required:
+        - token
+      properties:
+        token:
+          type: "string"
+          minLength: 43
+          maxLength: 43
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: "Token for confirming the email address."
+
+    ForgotPasswordRequest:
+      type: "object"
+      required:
+        - email
+      properties:
+        email:
+          type: "string"
+          format: "email"
+          maxLength: 254
+          description: "Email address of the user requesting a password reset."
+        turnstileToken:
+          type: "string"
+          maxLength: 2048
+          description: "Cloudflare Turnstile verification token. Required in production."
+
+    ChangePasswordRequest:
+      type: "object"
+      required:
+        - code
+        - password
+      properties:
+        code:
+          type: "string"
+          minLength: 43
+          maxLength: 43
+          pattern: "^[A-Za-z0-9_-]{43}$"
+          description: "Password reset token sent to the user's email."
+        password:
+          $ref: "#/components/schemas/PasswordField"
+        turnstileToken:
+          type: "string"
+          maxLength: 2048
+          description: "Cloudflare Turnstile verification token. Required in production."
+
+    PasswordField:
+      type: "string"
+      description: "Password must be between 8 and 128 characters, with at least one lowercase letter, one uppercase letter, and one digit."
+      minLength: 8
+      maxLength: 128
+      pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$"
+
+    ErrorResponse:
+      $ref: "common-schemas.yaml#/components/schemas/ErrorResponse"
+
+    SessionInfo:
+      type: "object"
+      properties:
+        sessionId:
+          type: "string"
+          format: "uuid"
+        createdAt:
+          type: "string"
+          format: "date-time"
+        expiresAt:
+          type: "string"
+          format: "date-time"
+        lastUsedAt:
+          type: "string"
+          format: "date-time"
+        userAgent:
+          type: "string"
+        ipAddress:
+          type: "string"

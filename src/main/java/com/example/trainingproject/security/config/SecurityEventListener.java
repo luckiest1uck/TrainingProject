@@ -1,0 +1,78 @@
+package com.example.trainingproject.security.config;
+
+import org.springframework.context.event.EventListener;
+import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
+import org.springframework.security.authorization.event.AuthorizationDeniedEvent;
+import org.springframework.security.core.Authentication;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import com.example.trainingproject.common.http.ApiPaths;
+import com.example.trainingproject.common.util.ClientIpExtractor;
+
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@Component
+public class SecurityEventListener {
+
+    private static final String ANONYMOUS_PRINCIPAL = "anonymousUser";
+    private static final String UNKNOWN_PRINCIPAL = "unknown";
+
+    @EventListener
+    public void onAuthenticationSuccess(AuthenticationSuccessEvent event) {
+        String logMessage = "auth.success: authType={}";
+        log.debug(logMessage, event.getAuthentication().getClass().getSimpleName());
+    }
+
+    @EventListener
+    @SuppressWarnings("unused")
+    public void onAuthorizationDenied(AuthorizationDeniedEvent<?> event) {
+        var attrs = RequestContextHolder.getRequestAttributes();
+        String method = "-";
+        String path = "-";
+        if (attrs instanceof ServletRequestAttributes sra) {
+            method = sra.getRequest().getMethod();
+            path = sanitize(normalizePath(sra.getRequest().getRequestURI()));
+        }
+
+        String principal = resolvePrincipal(event);
+
+        if (isExpectedAnonymousDeny(principal, path)) {
+            String logMessage = "auth.denied: method={}, path={}, principal={}";
+            log.debug(logMessage, method, path, principal);
+        } else {
+            String logMessage = "auth.denied: method={}, path={}, principal={}";
+            log.warn(logMessage, method, path, principal);
+        }
+    }
+
+    private static boolean isExpectedAnonymousDeny(String principal, String path) {
+        return ANONYMOUS_PRINCIPAL.equals(principal)
+                && (ApiPaths.USERS.equals(path) || ApiPaths.CART.equals(path) || ApiPaths.FAVORITES.equals(path));
+    }
+
+    private static String resolvePrincipal(AuthorizationDeniedEvent<?> event) {
+        try {
+            Authentication authentication = event.getAuthentication().get();
+            if (authentication.getName() == null || authentication.getName().isBlank()) {
+                return UNKNOWN_PRINCIPAL;
+            }
+            return authentication.getName();
+        } catch (RuntimeException _) {
+            return UNKNOWN_PRINCIPAL;
+        }
+    }
+
+    private static String normalizePath(String value) {
+        if (value == null || value.isBlank()) {
+            return "/";
+        }
+        return value.startsWith("/") ? value : "/" + value;
+    }
+
+    private static String sanitize(String value) {
+        return ClientIpExtractor.sanitize(value);
+    }
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "productId": {
+      "type": "string"
+    },
+    "avgRating": {
+      "type": "number"
+    },
+    "reviewsCount": {
+      "type": "number"
+    },
+    "ratingMap": {
+      "type": "object",
+      "properties": {
+        "star1": {
+          "type": "number"
+        },
+        "star2": {
+          "type": "number"
+        },
+        "star3": {
+          "type": "number"
+        },
+        "star4": {
+          "type": "number"
+        },
+        "star5": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,50 @@
+package com.example.trainingproject.order.endpoint;
+
+import static com.example.trainingproject.common.validation.pagination.PaginationParametersValidator.validate;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Component;
+
+import com.example.trainingproject.common.config.PaginationConfig;
+import com.example.trainingproject.common.exception.BadRequestException;
+import com.example.trainingproject.common.pagination.PageRequestFactory;
+
+import lombok.RequiredArgsConstructor;
+
+@Component
+@RequiredArgsConstructor
+class OrderPageRequestFactory {
+
+    private static final Set<String> ALLOWED_SORT_ATTRIBUTES =
+            Set.of("id", "createdAt", "updatedAt", "status", "itemsTotalPrice");
+
+    private final PaginationConfig paginationConfig;
+
+    Pageable build(Integer page, Integer size, String sortBy, String sortDirection) {
+        List<String> errors = new ArrayList<>(validate(page, size, sortBy, sortDirection, ALLOWED_SORT_ATTRIBUTES));
+        if (size != null && size > paginationConfig.orders().maxPageSize()) {
+            errors.add(error("'%s' is the incorrect 'size' value. Maximum allowed 'size' value is '%s'."
+                    .formatted(size, paginationConfig.orders().maxPageSize())));
+        }
+        if (!errors.isEmpty()) {
+            throw new BadRequestException("Order pagination parameters are incorrect. Error messages are [ %s ]."
+                    .formatted(String.join(" ", errors)));
+        }
+
+        return PageRequestFactory.of(
+                page != null ? page : paginationConfig.defaultPageNumber(),
+                size != null ? size : paginationConfig.orders().defaultPageSize(),
+                sortBy != null ? sortBy : paginationConfig.orders().defaultSortAttribute(),
+                sortDirection != null
+                        ? sortDirection
+                        : paginationConfig.orders().defaultSortDirection());
+    }
+
+    private static String error(String message) {
+        return " Error: { %s }. ".formatted(message);
+    }
+}

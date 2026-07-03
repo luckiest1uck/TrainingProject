@@ -1,0 +1,67 @@
+package com.example.trainingproject.payment.entity;
+
+import java.util.UUID;
+
+import jakarta.persistence.*;
+
+import com.example.trainingproject.common.audit.AuditableEntity;
+
+import lombok.*;
+
+/**
+ * Tracks Stripe payment details, separate from the Order entity. Training Project uses Stripe test mode only — no real money
+ * is charged.
+ */
+@Getter
+@Setter
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+@ToString(onlyExplicitlyIncluded = true)
+@Entity
+@Table(name = "payments")
+@SuppressWarnings("unused") // JPA reads and writes entity fields reflectively.
+public class Payment extends AuditableEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    @ToString.Include
+    private UUID id;
+
+    @Column(name = "order_id", nullable = false, unique = true)
+    @ToString.Include
+    private UUID orderId;
+
+    @Column(name = "user_id", nullable = false)
+    private UUID userId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider", nullable = false, length = 20)
+    private PaymentProvider provider;
+
+    @Column(name = "provider_session_id", unique = true)
+    private String providerSessionId;
+
+    @Column(name = "provider_payment_intent_id")
+    private String providerPaymentIntentId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    @ToString.Include
+    private PaymentStatus status;
+
+    @Column(name = "amount_minor", nullable = false)
+    private Long amountMinor;
+
+    @Column(name = "currency", nullable = false, length = 3)
+    private String currency;
+
+    @Column(name = "raw_event_id")
+    private String rawEventId;
+
+    @Column(name = "latest_event_type", length = 100)
+    private String latestEventType;
+
+    @Column(name = "checkout_idempotency_key", length = 100)
+    private String checkoutIdempotencyKey;
+}

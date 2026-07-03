@@ -1,0 +1,100 @@
+package com.example.trainingproject.order.exception.handler;
+
+import java.util.Arrays;
+
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+
+import com.example.trainingproject.common.exception.ProblemType;
+import com.example.trainingproject.common.exception.handler.ProblemDetailFactory;
+import com.example.trainingproject.openapi.dto.OrderStatus;
+import com.example.trainingproject.order.exception.*;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@RequiredArgsConstructor
+@SuppressWarnings("unused")
+public class OrderExceptionHandler {
+
+    private final ProblemDetailFactory problemDetailFactory;
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ProblemDetail handleTypeMismatch(final MethodArgumentTypeMismatchException ex) {
+        if (ex.getRequiredType() != OrderStatus.class) {
+            log.debug("exception.order.type_mismatch.generic: status=400");
+            return problemDetailFactory.build(
+                    ProblemType.INVALID_PARAMETER,
+                    "Invalid parameter",
+                    HttpStatus.BAD_REQUEST,
+                    "Invalid value for parameter '" + ex.getName() + "'.");
+        }
+        log.debug("exception.order.type_mismatch: status=400");
+        return problemDetailFactory.build(
+                ProblemType.INVALID_PARAMETER,
+                "Invalid parameter",
+                HttpStatus.BAD_REQUEST,
+                "Incorrect status value. Supported: " + Arrays.toString(OrderStatus.values()));
+    }
+
+    @ExceptionHandler(OrderException.class)
+    public ResponseEntity<ProblemDetail> handleOrderException(final OrderException ex) {
+        record ErrorMapping(String logTag, String typeSlug, String title, HttpStatus status, String detail) {}
+
+        var mapping =
+                switch (ex) {
+                    case OrderNotFoundException _ ->
+                        new ErrorMapping(
+                                "exception.order.not_found",
+                                ProblemType.ORDER_NOT_FOUND,
+                                "Order not found",
+                                HttpStatus.NOT_FOUND,
+                                "Order not found.");
+                    case OrderAccessDeniedException _ ->
+                        new ErrorMapping(
+                                "exception.order.access_denied",
+                                ProblemType.ORDER_ACCESS_DENIED,
+                                "Access denied",
+                                HttpStatus.FORBIDDEN,
+                                "Access denied.");
+                    case OrderDeliveryAddressNotFoundException _ ->
+                        new ErrorMapping(
+                                "exception.order.delivery_address_not_found",
+                                ProblemType.ORDER_DELIVERY_ADDRESS_NOT_FOUND,
+                                "Delivery address not found",
+                                HttpStatus.NOT_FOUND,
+                                "Delivery address not found.");
+                    case InvalidOrderStateTransitionException _ ->
+                        new ErrorMapping(
+                                "exception.order.invalid_transition",
+                                ProblemType.ORDER_STATE_INVALID,
+                                "Invalid order state",
+                                HttpStatus.CONFLICT,
+                                "This order can no longer be modified.");
+                    case OrderCancellationWindowExpiredException _ ->
+                        new ErrorMapping(
+                                "exception.order.cancellation_expired",
+                                ProblemType.ORDER_CANCELLATION_EXPIRED,
+                                "Cancellation window expired",
+                                HttpStatus.CONFLICT,
+                                "Order cannot be cancelled: cancellation window has expired.");
+                };
+
+        HttpStatus httpStatus = mapping.status();
+        log.debug("{}: status={}", mapping.logTag(), httpStatus.value());
+        ProblemDetail pd =
+                problemDetailFactory.build(mapping.typeSlug(), mapping.title(), httpStatus, mapping.detail());
+        return ResponseEntity.status(httpStatus).body(pd);
+    }
+}

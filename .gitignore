@@ -1,0 +1,112 @@
+##############################
+## Java
+##############################
+.mtj.tmp/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+
+##############################
+## Maven
+##############################
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+pom.xml.bak
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+##############################
+## IntelliJ
+##############################
+out/
+.idea/
+.idea_modules/
+*.iml
+*.ipr
+*.iws
+
+##############################
+## Eclipse
+##############################
+.settings/
+tmp/
+.metadata
+.classpath
+.project
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.loadpath
+.factorypath
+
+##############################
+## NetBeans
+##############################
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+nbactions.xml
+nb-configuration.xml
+
+##############################
+## Visual Studio Code
+##############################
+.vscode/
+.code-workspace
+
+##############################
+## Amazon Q
+##############################
+# Amazon Q agent workspace - contains local notes, deployment details, and AI-generated artifacts
+# These files are for local development workflow only and should not be committed
+.amazonq/
+
+##############################
+## Local code intelligence indexes
+##############################
+.codegraph/
+
+##############################
+## OS X
+##############################
+.DS_Store
+/.env.local
+.env
+.env.*
+!.env.example
+local.env
+/README.local.md
+/docker-compose.override.yaml
+
+##############################
+## Deployment
+##############################
+ssh-key-*.key
+maintaner/deployment/docker-compose.prod.yml
+maintaner/deployment/.env.prod
+/ops/
+maintaner/*
+!maintaner/README.md
+/Taskfile.yml
+/docs/observability/
+
+##############################
+## Logs
+##############################
+**/*.log
+maintaner/logs/
+/src/main/resources/stripe.yaml
+/docker-compose.override.yml
+META-INF/

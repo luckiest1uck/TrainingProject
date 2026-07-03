@@ -1,0 +1,66 @@
+package com.example.trainingproject.security.signup.verification;
+
+import org.springframework.stereotype.Service;
+
+import com.example.trainingproject.common.util.EmailNormalizer;
+import com.example.trainingproject.openapi.dto.UserRegistrationRequest;
+import com.example.trainingproject.security.email.sender.AuthTokenEmailSender;
+import com.example.trainingproject.security.session.management.AuthSessionRequestMetadata;
+import com.example.trainingproject.security.session.token.AuthenticationTokens;
+import com.example.trainingproject.security.signup.registration.UserRegistrationService;
+import com.example.trainingproject.user.api.UserAccessControlApi;
+import com.example.trainingproject.user.api.UserLookupApi;
+
+import lombok.RequiredArgsConstructor;
+
+@Service
+@RequiredArgsConstructor
+public class EmailVerificationService {
+
+    private final AuthTokenEmailSender emailConfirmation;
+    private final EmailTokenService emailTokenService;
+    private final UserRegistrationService userRegistrationService;
+    private final UserLookupApi userLookupApi;
+    private final UserAccessControlApi userAccessControlApi;
+
+    public void sendEmailVerificationCode(UserRegistrationRequest request) {
+        sendEmailVerificationCode(request, null);
+    }
+
+    public void sendEmailVerificationCode(UserRegistrationRequest request, String remoteIp) {
+        userRegistrationService.ensureRegistrationAllowed(request, remoteIp);
+        String token = emailTokenService.generateEmailVerificationToken(request);
+        emailConfirmation.sendTemporaryCode(EmailNormalizer.normalize(request.getEmail()), token);
+    }
+
+    public void sendPasswordResetCode(String email) {
+        String normalizedEmail = EmailNormalizer.normalize(email);
+        String token = emailTokenService.generatePasswordResetToken(normalizedEmail);
+        emailConfirmation.sendTemporaryCode(normalizedEmail, token);
+    }
+
+    public AuthenticationTokens confirmEmailByCode(String token, AuthSessionRequestMetadata requestMetadata) {
+        EmailVerificationTokenPayload payload = emailTokenService.consumeEmailVerificationToken(token);
+        String encodedPassword = payload.encodedPassword();
+        if (encodedPassword == null || encodedPassword.isBlank()) {
+            throw new IllegalStateException("Email verification token is missing encoded password");
+        }
+        UserRegistrationRequest registrationRequest = toRegistrationRequest(payload.registration());
+        return userRegistrationService.completeEmailVerifiedRegistration(
+                registrationRequest, encodedPassword, requestMetadata);
+    }
+
+    public void confirmResetPasswordEmailByCode(String token, String newPassword) {
+        PasswordResetTokenPayload payload = emailTokenService.consumePasswordResetToken(token);
+        var user = userLookupApi.getUserByEmail(payload.email());
+        userAccessControlApi.changePassword(user.id(), newPassword);
+    }
+
+    private static UserRegistrationRequest toRegistrationRequest(EmailRegistrationPayload registration) {
+        UserRegistrationRequest request = new UserRegistrationRequest();
+        request.setFirstName(registration.firstName());
+        request.setLastName(registration.lastName());
+        request.setEmail(registration.email());
+        return request;
+    }
+}
