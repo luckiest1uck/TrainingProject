@@ -7,13 +7,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import com.stripe.exception.AuthenticationException;
 import com.example.trainingproject.common.exception.ProblemType;
 import com.example.trainingproject.common.exception.handler.ProblemDetailFactory;
 import com.example.trainingproject.payment.exception.PaymentAccessDeniedException;
 import com.example.trainingproject.payment.exception.PaymentEventProcessingException;
 import com.example.trainingproject.payment.exception.PaymentException;
 import com.example.trainingproject.payment.exception.StripeSessionException;
+import com.stripe.exception.AuthenticationException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

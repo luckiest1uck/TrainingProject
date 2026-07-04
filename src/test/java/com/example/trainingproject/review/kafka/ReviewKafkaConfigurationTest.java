@@ -40,8 +40,8 @@ class ReviewKafkaConfigurationTest {
         assertKafkaEnabledCondition(ReviewCreatedKafkaConsumer.class);
         assertKafkaEnabledCondition(Class.forName(
                 "com.example.trainingproject.review.messaging.kafka.inbox.ReviewCreatedKafkaConsumerConfiguration"));
-        assertKafkaEnabledCondition(
-                Class.forName("com.example.trainingproject.review.messaging.kafka.outbox.ReviewCreatedOutboxEventListener"));
+        assertKafkaEnabledCondition(Class.forName(
+                "com.example.trainingproject.review.messaging.kafka.outbox.ReviewCreatedOutboxEventListener"));
         assertKafkaEnabledCondition(
                 Class.forName("com.example.trainingproject.review.messaging.kafka.inbox.ReviewCreatedInboxProcessor"));
     }

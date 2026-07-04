@@ -335,7 +335,8 @@ class ArchitectureRulesTest {
      * boundaries directly.
      */
     @ArchTest
-    static final ArchRule feature_packages_should_be_free_of_cycles = slices().matching("com.example.trainingproject.(*)..")
+    static final ArchRule feature_packages_should_be_free_of_cycles = slices().matching(
+                    "com.example.trainingproject.(*)..")
             .should()
             .beFreeOfCycles()
             .ignoreDependency(INFRASTRUCTURE_MODULE, DescribedPredicate.alwaysTrue())

@@ -8,15 +8,15 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
-import com.stripe.exception.StripeException;
-import com.stripe.model.checkout.Session;
-import com.stripe.param.checkout.SessionCreateParams;
 import com.example.trainingproject.cart.api.dto.CartItemSnapshot;
 import com.example.trainingproject.order.api.OrderSnapshot;
 import com.example.trainingproject.payment.config.StripeProperties;
 import com.example.trainingproject.payment.converter.StripeSessionLineItemListConverter;
 import com.example.trainingproject.payment.dto.StripeSessionResult;
 import com.example.trainingproject.payment.exception.StripeSessionException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.checkout.Session;
+import com.stripe.param.checkout.SessionCreateParams;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

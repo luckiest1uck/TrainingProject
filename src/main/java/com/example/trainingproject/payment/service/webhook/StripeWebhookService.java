@@ -4,11 +4,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
+import com.example.trainingproject.payment.config.StripeProperties;
+import com.example.trainingproject.payment.exception.PaymentEventProcessingException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.net.Webhook;
-import com.example.trainingproject.payment.config.StripeProperties;
-import com.example.trainingproject.payment.exception.PaymentEventProcessingException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

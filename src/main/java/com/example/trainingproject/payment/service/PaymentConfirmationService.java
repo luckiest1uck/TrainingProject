@@ -5,12 +5,12 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.stripe.model.checkout.Session;
 import com.example.trainingproject.cart.api.CartCheckoutApi;
 import com.example.trainingproject.order.api.OrderPaymentApi;
 import com.example.trainingproject.payment.entity.Payment;
 import com.example.trainingproject.payment.entity.PaymentStatus;
 import com.example.trainingproject.payment.repository.PaymentRepository;
+import com.stripe.model.checkout.Session;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

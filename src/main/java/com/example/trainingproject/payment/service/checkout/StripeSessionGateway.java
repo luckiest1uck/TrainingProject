@@ -3,11 +3,11 @@ package com.example.trainingproject.payment.service.checkout;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 
+import com.example.trainingproject.payment.config.StripeProperties;
 import com.stripe.exception.StripeException;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.checkout.SessionCreateParams;
-import com.example.trainingproject.payment.config.StripeProperties;
 
 import lombok.RequiredArgsConstructor;
 

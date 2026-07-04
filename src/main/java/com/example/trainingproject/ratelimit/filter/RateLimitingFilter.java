@@ -14,8 +14,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.example.trainingproject.common.config.CaffeineSizeProperties;
 import com.example.trainingproject.common.exception.ProblemType;
 import com.example.trainingproject.common.exception.handler.ProblemTypeUriFactory;
@@ -27,6 +25,8 @@ import com.example.trainingproject.ratelimit.configuration.RateLimitProperties;
 import com.example.trainingproject.ratelimit.configuration.RateLimitProperties.Bucket;
 import com.example.trainingproject.ratelimit.dto.RateLimitCategory;
 import com.example.trainingproject.ratelimit.util.RateLimitResponseWriter;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -99,7 +99,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         Bucket auth = properties.getAuth();
         String key = "auth:ip:" + ip;
         RateLimitCategory authPre = RateLimitCategory.AUTH_PRE;
-        if (RateLimitRouteClassifier.isStrictPreAuthPath(request.getRequestURI())
+        if (RateLimitRouteClassifier.isStrictPreAuthPath(RateLimitRouteClassifier.resolveRequestPath(request))
                 && isBlocked(request, response, key, authPre, auth, closedRateLimiter, "ip")) {
             banTracker.recordBlock(ip);
             return;

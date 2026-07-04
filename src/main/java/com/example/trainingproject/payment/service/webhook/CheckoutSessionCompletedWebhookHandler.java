@@ -9,13 +9,13 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.stripe.model.Event;
-import com.stripe.model.checkout.Session;
 import com.example.trainingproject.payment.entity.Payment;
 import com.example.trainingproject.payment.entity.PaymentStatus;
 import com.example.trainingproject.payment.repository.PaymentRepository;
 import com.example.trainingproject.payment.service.PaymentConfirmationService;
 import com.example.trainingproject.payment.service.PaymentConfirmationSource;
+import com.stripe.model.Event;
+import com.stripe.model.checkout.Session;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

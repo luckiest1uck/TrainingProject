@@ -2,9 +2,9 @@ package com.example.trainingproject.user.service;
 
 import org.springframework.stereotype.Component;
 
+import com.example.trainingproject.common.exception.BadRequestException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.example.trainingproject.common.exception.BadRequestException;
 
 import lombok.RequiredArgsConstructor;
 

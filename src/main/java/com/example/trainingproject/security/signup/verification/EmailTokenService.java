@@ -39,18 +39,30 @@ public class EmailTokenService {
 
     public String generateEmailVerificationToken(UserRegistrationRequest request) {
         String email = EmailNormalizer.normalize(request.getEmail());
-        validateCooldown(email, TokenPurpose.EMAIL_VERIFICATION);
-        String encodedPassword = passwordEncoder.encode(request.getPassword());
-        var registration = new EmailRegistrationPayload(request.getFirstName(), request.getLastName(), email);
-        var payload = new EmailVerificationTokenPayload(email, registration, encodedPassword);
-        return generate(email, TokenPurpose.EMAIL_VERIFICATION, tokenPayloadProtector.protect(payload));
+        Duration ttl = tokenTtl();
+        reserveCooldown(email, TokenPurpose.EMAIL_VERIFICATION, ttl);
+        try {
+            String encodedPassword = passwordEncoder.encode(request.getPassword());
+            var registration = new EmailRegistrationPayload(request.getFirstName(), request.getLastName(), email);
+            var payload = new EmailVerificationTokenPayload(email, registration, encodedPassword);
+            return generate(email, TokenPurpose.EMAIL_VERIFICATION, tokenPayloadProtector.protect(payload), ttl);
+        } catch (RuntimeException ex) {
+            temporaryStore.remove(cooldownKey(TokenPurpose.EMAIL_VERIFICATION, email));
+            throw ex;
+        }
     }
 
     public String generatePasswordResetToken(String email) {
         String normalizedEmail = EmailNormalizer.normalize(email);
-        validateCooldown(normalizedEmail, TokenPurpose.PASSWORD_RESET);
-        var payload = new PasswordResetTokenPayload(normalizedEmail);
-        return generate(normalizedEmail, TokenPurpose.PASSWORD_RESET, tokenPayloadProtector.protect(payload));
+        Duration ttl = tokenTtl();
+        reserveCooldown(normalizedEmail, TokenPurpose.PASSWORD_RESET, ttl);
+        try {
+            var payload = new PasswordResetTokenPayload(normalizedEmail);
+            return generate(normalizedEmail, TokenPurpose.PASSWORD_RESET, tokenPayloadProtector.protect(payload), ttl);
+        } catch (RuntimeException ex) {
+            temporaryStore.remove(cooldownKey(TokenPurpose.PASSWORD_RESET, normalizedEmail));
+            throw ex;
+        }
     }
 
     public EmailVerificationTokenPayload consumeEmailVerificationToken(String token) {
@@ -61,16 +73,12 @@ public class EmailTokenService {
         return consume(token, TokenPurpose.PASSWORD_RESET, PasswordResetTokenPayload.class);
     }
 
-    private String generate(String email, TokenPurpose purpose, String protectedPayload) {
-        Duration ttl = tokenTtl();
+    private String generate(String email, TokenPurpose purpose, String protectedPayload, Duration ttl) {
         for (int attempt = 0; attempt < MAX_TOKEN_GENERATION_ATTEMPTS; attempt++) {
             String token = nextToken();
             String tokenKey = tokenKey(purpose, token);
 
             if (temporaryStore.putIfAbsent(tokenKey, protectedPayload, ttl)) {
-                String value = OffsetDateTime.now().plus(ttl).toString();
-                String key = cooldownKey(purpose, email);
-                temporaryStore.put(key, value, ttl);
                 return token;
             }
         }
@@ -88,13 +96,16 @@ public class EmailTokenService {
         return payload;
     }
 
-    private void validateCooldown(String email, TokenPurpose purpose) {
-        temporaryStore
-                .get(cooldownKey(purpose, email))
-                .map(OffsetDateTime::parse)
-                .ifPresent(expiry -> {
-                    throw new TimeTokenException(expiry);
-                });
+    private void reserveCooldown(String email, TokenPurpose purpose, Duration ttl) {
+        OffsetDateTime expiry = OffsetDateTime.now().plus(ttl);
+        String key = cooldownKey(purpose, email);
+        if (temporaryStore.putIfAbsent(key, expiry.toString(), ttl)) {
+            return;
+        }
+
+        OffsetDateTime existingExpiry =
+                temporaryStore.get(key).map(OffsetDateTime::parse).orElse(expiry);
+        throw new TimeTokenException(existingExpiry);
     }
 
     private String nextToken() {

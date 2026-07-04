@@ -3,10 +3,10 @@ package com.example.trainingproject.security.signup.verification;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.security.crypto.AesGcmStringProtector;
 import com.example.trainingproject.security.jwt.config.JwtProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Component
 class EmailTokenPayloadProtector {

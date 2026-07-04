@@ -40,8 +40,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
-        String uri = request.getRequestURI();
-        return ApiPaths.AUTH_REFRESH.equals(uri) || uri.startsWith(ApiPaths.AUTH_OAUTH + "/");
+        String uri = resolveRequestPath(request);
+        return isPublicAuthPath(uri);
     }
 
     @Override
@@ -110,5 +110,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         SecurityContextHolder.clearContext();
         MDC.remove(RequestContextConstants.USER_ID_MDC_KEY);
         MDC.remove(RequestContextConstants.SESSION_ID_MDC_KEY);
+    }
+
+    private String resolveRequestPath(HttpServletRequest request) {
+        String servletPath = request.getServletPath();
+        return (servletPath != null && !servletPath.isBlank()) ? servletPath : request.getRequestURI();
+    }
+
+    private boolean isPublicAuthPath(String uri) {
+        return ApiPaths.AUTH_REGISTER.equals(uri)
+                || ApiPaths.AUTH_CONFIRM.equals(uri)
+                || ApiPaths.AUTH_AUTHENTICATE.equals(uri)
+                || ApiPaths.AUTH_REFRESH.equals(uri)
+                || ApiPaths.AUTH_PASSWORD_FORGOT.equals(uri)
+                || ApiPaths.AUTH_PASSWORD_CHANGE.equals(uri)
+                || uri.startsWith(ApiPaths.AUTH_OAUTH + "/");
     }
 }

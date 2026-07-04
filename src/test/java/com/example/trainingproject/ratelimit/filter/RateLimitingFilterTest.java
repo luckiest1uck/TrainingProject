@@ -288,6 +288,19 @@ class RateLimitingFilterTest {
     }
 
     @Test
+    @DisplayName("actuator and docs paths are skipped when the app runs under a servlet context path")
+    void actuatorAndDocsAreSkippedWithContextPath() {
+        assertThat(filter.shouldNotFilter(request("GET", "/training", "/actuator/health")))
+                .isTrue();
+        assertThat(filter.shouldNotFilter(request("GET", "/training", "/api/docs/swagger-ui")))
+                .isTrue();
+        assertThat(filter.shouldNotFilter(request("GET", "/training", "/api/docs")))
+                .isTrue();
+        assertThat(filter.shouldNotFilter(request("GET", "/training", "/api/docs-malicious")))
+                .isFalse();
+    }
+
+    @Test
     @DisplayName("first blocked request for a key emits WARN; second emits DEBUG (no second 429 header change)")
     void firstBlockWarnSecondBlockDebug() throws Exception {
         when(clientIpExtractor.extract(any())).thenReturn("9.9.9.9");
@@ -408,6 +421,23 @@ class RateLimitingFilterTest {
     }
 
     @Test
+    @DisplayName("strict pre-auth bucket still applies under a servlet context path")
+    void strictPreAuthBucketBlocksLoginWithContextPath() throws Exception {
+        when(clientIpExtractor.extract(any())).thenReturn("1.2.3.4");
+        when(closedRateLimiter.tryConsume(argThat(key -> key != null && key.startsWith("auth:ip:")), anyInt(), any()))
+                .thenReturn(new RateLimitResult(false, 10, 0, RESET_MILLIS));
+
+        MockHttpServletRequest request = request("POST", "/training", "/api/v1/auth/authenticate");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilterInternal(request, response, mock(FilterChain.class));
+
+        assertThat(response.getStatus()).isEqualTo(429);
+        verify(openRateLimiter, never())
+                .tryConsume(argThat(key -> key != null && key.startsWith("pre-auth:")), anyInt(), any());
+    }
+
+    @Test
     @DisplayName("POST to generic endpoint uses write bucket")
     void postToGenericEndpointUsesWriteBucket() throws Exception {
         when(clientIpExtractor.extract(any())).thenReturn("1.2.3.4");
@@ -518,6 +548,13 @@ class RateLimitingFilterTest {
         assertThat(bannedResponse.getStatus()).isEqualTo(429);
         // The closed limiter was called 3 times for the blocks, but NOT for the banned request
         verify(closedRateLimiter, org.mockito.Mockito.times(3)).tryConsume(any(), anyInt(), any());
+    }
+
+    private static MockHttpServletRequest request(String method, String contextPath, String servletPath) {
+        MockHttpServletRequest request = new MockHttpServletRequest(method, contextPath + servletPath);
+        request.setContextPath(contextPath);
+        request.setServletPath(servletPath);
+        return request;
     }
 
     private RateLimitingFilter newFilter(RateLimitProperties properties) {

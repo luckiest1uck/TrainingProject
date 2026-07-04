@@ -12,6 +12,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import com.example.trainingproject.common.exception.UnauthorizedException;
+import com.example.trainingproject.security.oauth.config.GoogleOAuthProperties;
+import com.example.trainingproject.security.oauth.config.OAuthProvider;
+import com.example.trainingproject.security.oauth.dto.OAuthProfile;
 import com.google.api.client.googleapis.auth.oauth2.GoogleAuthorizationCodeFlow;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
@@ -19,10 +23,6 @@ import com.google.api.client.http.HttpRequest;
 import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
-import com.example.trainingproject.common.exception.UnauthorizedException;
-import com.example.trainingproject.security.oauth.config.GoogleOAuthProperties;
-import com.example.trainingproject.security.oauth.config.OAuthProvider;
-import com.example.trainingproject.security.oauth.dto.OAuthProfile;
 
 import lombok.extern.slf4j.Slf4j;
 

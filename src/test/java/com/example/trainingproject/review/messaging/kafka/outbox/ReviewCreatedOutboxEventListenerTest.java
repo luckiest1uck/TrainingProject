@@ -14,12 +14,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.review.dto.ReviewCreatedEvent;
 import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
 import com.example.trainingproject.review.messaging.kafka.event.ReviewCreatedKafkaEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReviewCreatedOutboxEventListener")

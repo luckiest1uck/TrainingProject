@@ -2,10 +2,10 @@ package com.example.trainingproject.ratelimit.filter;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.example.trainingproject.common.config.CaffeineSizeProperties;
 import com.example.trainingproject.ratelimit.configuration.RateLimitProperties;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 class RateLimitBanTracker {
 

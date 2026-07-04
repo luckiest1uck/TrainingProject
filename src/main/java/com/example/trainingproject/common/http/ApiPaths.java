@@ -11,6 +11,8 @@ public class ApiPaths {
 
     public static final String AUTH = "/api/v1/auth";
     public static final String AUTH_ROOT_PREFIX = AUTH + "/";
+    public static final String AUTH_REGISTER = AUTH + "/register";
+    public static final String AUTH_CONFIRM = AUTH + "/confirm";
     public static final String AUTH_AUTHENTICATE = AUTH + "/authenticate";
     public static final String AUTH_REFRESH = AUTH + "/refresh";
     public static final String AUTH_LOGOUT_ALL = AUTH + "/logout-all";

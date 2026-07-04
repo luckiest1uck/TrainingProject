@@ -1,7 +1,6 @@
 package com.example.trainingproject.security.endpoint;
 
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.hasSize;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,6 +19,27 @@ class LogoutEndpointIntegrationTest extends AuthenticatedUserIntegrationSupport 
         AuthenticatedUser user = registerAndAuthenticateUser();
 
         given(authenticatedJsonSpec(AUTH_BASE_PATH, user.accessToken()).header("X-Refresh-Token", user.refreshToken()))
+                .post("/logout")
+                .then()
+                .statusCode(HttpStatus.OK.value());
+
+        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + user.refreshToken()))
+                .post("/refresh")
+                .then()
+                .statusCode(HttpStatus.UNAUTHORIZED.value());
+
+        given(authenticatedJsonSpec(AUTH_BASE_PATH, user.accessToken()))
+                .get("/sessions")
+                .then()
+                .statusCode(HttpStatus.UNAUTHORIZED.value());
+    }
+
+    @Test
+    @DisplayName("Should revoke the current session even when X-Refresh-Token is omitted")
+    void shouldRevokeCurrentSessionWithoutRefreshHeader() {
+        AuthenticatedUser user = registerAndAuthenticateUser();
+
+        given(authenticatedJsonSpec(AUTH_BASE_PATH, user.accessToken()))
                 .post("/logout")
                 .then()
                 .statusCode(HttpStatus.OK.value());
@@ -59,8 +79,53 @@ class LogoutEndpointIntegrationTest extends AuthenticatedUserIntegrationSupport 
         given(authenticatedJsonSpec(AUTH_BASE_PATH, firstSession.accessToken()))
                 .get("/sessions")
                 .then()
-                .statusCode(HttpStatus.OK.value())
-                .body("", hasSize(0));
+                .statusCode(HttpStatus.UNAUTHORIZED.value());
+    }
+
+    @Test
+    @DisplayName("Retrying a logged-out refresh token does not revoke the user's other active sessions")
+    void loggedOutRefreshRetryDoesNotRevokeOtherSessions() {
+        AuthenticatedUser firstSession = registerAndAuthenticateUser();
+        AuthenticatedUser secondSession = authenticate(firstSession.email(), firstSession.password());
+
+        given(authenticatedJsonSpec(AUTH_BASE_PATH, firstSession.accessToken())
+                        .header("X-Refresh-Token", firstSession.refreshToken()))
+                .post("/logout")
+                .then()
+                .statusCode(HttpStatus.OK.value());
+
+        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + firstSession.refreshToken()))
+                .post("/refresh")
+                .then()
+                .statusCode(HttpStatus.UNAUTHORIZED.value());
+
+        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + secondSession.refreshToken()))
+                .post("/refresh")
+                .then()
+                .statusCode(HttpStatus.OK.value());
+    }
+
+    @Test
+    @DisplayName(
+            "Retrying a logged-out refresh token without X-Refresh-Token logout does not revoke the user's other active sessions")
+    void loggedOutRefreshRetryWithoutRefreshHeaderDoesNotRevokeOtherSessions() {
+        AuthenticatedUser firstSession = registerAndAuthenticateUser();
+        AuthenticatedUser secondSession = authenticate(firstSession.email(), firstSession.password());
+
+        given(authenticatedJsonSpec(AUTH_BASE_PATH, firstSession.accessToken()))
+                .post("/logout")
+                .then()
+                .statusCode(HttpStatus.OK.value());
+
+        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + firstSession.refreshToken()))
+                .post("/refresh")
+                .then()
+                .statusCode(HttpStatus.UNAUTHORIZED.value());
+
+        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + secondSession.refreshToken()))
+                .post("/refresh")
+                .then()
+                .statusCode(HttpStatus.OK.value());
     }
 
     private AuthenticatedUser authenticate(String email, String password) {

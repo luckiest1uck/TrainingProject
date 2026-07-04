@@ -12,12 +12,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.exception.BadRequestException;
 import com.example.trainingproject.openapi.dto.UserRegistrationRequest;
 import com.example.trainingproject.security.jwt.config.JwtProperties;
 import com.example.trainingproject.security.service.cache.InMemoryExpiringKeyValueStore;
 import com.example.trainingproject.security.signup.exception.TimeTokenException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @DisplayName("EmailTokenService contract tests")
 class EmailTokenServiceContractTest {

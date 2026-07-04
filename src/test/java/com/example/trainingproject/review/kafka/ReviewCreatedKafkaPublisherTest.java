@@ -27,12 +27,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.common.monitoring.SentryJobMonitor;
 import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
 import com.example.trainingproject.review.messaging.kafka.outbox.OutboxEventRepository;
 import com.example.trainingproject.review.messaging.kafka.outbox.ReviewCreatedKafkaPublisher;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReviewCreatedKafkaPublisher")
@@ -100,7 +100,8 @@ class ReviewCreatedKafkaPublisherTest {
         when(outboxEventRepository.claimPublishableEvents(anyInt(), anyString()))
                 .thenReturn(List.of(row));
         var producerRecord = new ProducerRecord<>("training-project.review.created.v1", "product-1", row.payload());
-        var metadata = new RecordMetadata(new TopicPartition("training-project.review.created.v1", 0), 42L, 0, 0L, 0, 0);
+        var metadata =
+                new RecordMetadata(new TopicPartition("training-project.review.created.v1", 0), 42L, 0, 0L, 0, 0);
         when(kafkaTemplate.send(org.mockito.ArgumentMatchers.<ProducerRecord<String, String>>argThat(
                         record -> record.topic().equals("training-project.review.created.v1")
                                 && record.key().equals("product-1")

@@ -2,6 +2,7 @@ package com.example.trainingproject.security.session.token;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -188,6 +189,21 @@ class RefreshTokenServiceTest {
 
             verify(authSessionService).revokeAllForCompromisedUserBySessionId(sessionId);
             verifyNoInteractions(userDetailsService, sessionTokenService);
+        }
+
+        @Test
+        @DisplayName("does not revoke other sessions when the refresh token is already blacklisted")
+        void doesNotRevokeOtherSessionsWhenRefreshTokenIsAlreadyBlacklisted() {
+            String rawToken = "managed-refresh-token";
+            JwtTokenBlacklistedException failure = new JwtTokenBlacklistedException("Refresh token has been revoked");
+
+            when(jwtBearerTokenResolver.extract(request)).thenReturn(rawToken);
+            doThrow(failure).when(jwtTokenBlacklist).validateNotBlacklisted(rawToken);
+
+            assertThatThrownBy(() -> service.refresh(request, REQUEST_METADATA)).isSameAs(failure);
+
+            verify(jwtTokenBlacklist).validateNotBlacklisted(rawToken);
+            verifyNoInteractions(userDetailsService, sessionTokenService, authSessionService);
         }
     }
 

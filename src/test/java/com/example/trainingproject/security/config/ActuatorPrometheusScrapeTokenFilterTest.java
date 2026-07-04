@@ -65,6 +65,26 @@ class ActuatorPrometheusScrapeTokenFilterTest {
         assertThat(currentAuthentication()).isNull();
     }
 
+    @Test
+    @DisplayName("filters prometheus requests when the app runs under a servlet context path")
+    void filtersPrometheusRequestsWithContextPath() {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/training/actuator/prometheus");
+        request.setContextPath("/training");
+        request.setServletPath("/actuator/prometheus");
+
+        assertThat(filter.shouldNotFilter(request)).isFalse();
+    }
+
+    @Test
+    @DisplayName("skips non prometheus requests when the app runs under a servlet context path")
+    void skipsNonPrometheusRequestsWithContextPath() {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/training/actuator/health");
+        request.setContextPath("/training");
+        request.setServletPath("/actuator/health");
+
+        assertThat(filter.shouldNotFilter(request)).isTrue();
+    }
+
     private static Authentication currentAuthentication() {
         return SecurityContextHolder.getContext().getAuthentication();
     }

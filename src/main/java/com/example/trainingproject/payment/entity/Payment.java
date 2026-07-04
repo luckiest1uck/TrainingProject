@@ -9,8 +9,8 @@ import com.example.trainingproject.common.audit.AuditableEntity;
 import lombok.*;
 
 /**
- * Tracks Stripe payment details, separate from the Order entity. Training Project uses Stripe test mode only — no real money
- * is charged.
+ * Tracks Stripe payment details, separate from the Order entity. Training Project uses Stripe test mode only — no real
+ * money is charged.
  */
 @Getter
 @Setter

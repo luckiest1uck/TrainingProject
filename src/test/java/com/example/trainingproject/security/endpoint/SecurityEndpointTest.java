@@ -277,6 +277,34 @@ class SecurityEndpointTest extends IntegrationTestBase {
     }
 
     @Test
+    @DisplayName("Should authenticate user even when an invalid bearer token header is attached")
+    void shouldAuthenticateUserWhenInvalidBearerTokenHeaderIsAttached() {
+        UserRegistrationRequest pending =
+                new UserRegistrationRequest("Auth", "Header", "auth.header@gmail.com", "!h2h3kKl22");
+        String token = emailTokenService.generateEmailVerificationToken(pending);
+
+        given(specification)
+                .body("{\"token\":\"" + token + "\"}")
+                .post("/confirm")
+                .then()
+                .statusCode(HttpStatus.CREATED.value());
+
+        given(specification)
+                .header("Authorization", "Bearer invalid.token.value")
+                .body("""
+                        {
+                          "email":"auth.header@gmail.com",
+                          "password":"!h2h3kKl22"
+                        }
+                        """)
+                .post("/authenticate")
+                .then()
+                .statusCode(HttpStatus.OK.value())
+                .body("token", notNullValue())
+                .body("refreshToken", notNullValue());
+    }
+
+    @Test
     @DisplayName("Should fail authentication for non-existent user")
     void shouldFailAuthenticationForNonExistentUser() {
         given(specification)

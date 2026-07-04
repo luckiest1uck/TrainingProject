@@ -8,9 +8,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
-import com.stripe.exception.StripeException;
-import com.stripe.model.checkout.Session;
-import com.stripe.param.checkout.SessionCreateParams;
 import com.example.trainingproject.common.exception.BadRequestException;
 import com.example.trainingproject.common.monitoring.AbuseSignalRecorder;
 import com.example.trainingproject.common.turnstile.TurnstileProperties;
@@ -26,6 +23,9 @@ import com.example.trainingproject.payment.dto.StripeSessionResult;
 import com.example.trainingproject.payment.exception.StripeSessionException;
 import com.example.trainingproject.security.api.CurrentUserProvider;
 import com.example.trainingproject.security.api.dto.CurrentUserSnapshot;
+import com.stripe.exception.StripeException;
+import com.stripe.model.checkout.Session;
+import com.stripe.param.checkout.SessionCreateParams;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

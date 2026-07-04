@@ -12,12 +12,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.config.CaffeineSizeProperties;
 import com.example.trainingproject.security.jwt.config.JwtProperties;
 import com.example.trainingproject.security.service.cache.ExpiringKeyValueStore;
 import com.example.trainingproject.security.service.cache.InMemoryExpiringKeyValueStore;
 import com.example.trainingproject.security.session.token.AuthenticationTokens;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @DisplayName("OAuthTokenHandoffStore unit tests")
 class OAuthTokenHandoffStoreTest {

@@ -9,8 +9,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.ratelimit.api.RateLimitResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @DisplayName("RateLimitResponseWriter unit tests")
 class RateLimitResponseWriterTest {

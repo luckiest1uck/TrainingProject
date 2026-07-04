@@ -23,7 +23,6 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.exception.handler.ProblemTypeUriFactory;
 import com.example.trainingproject.security.api.CurrentUserProvider;
 import com.example.trainingproject.security.config.SecurityProblemResponseWriter;
@@ -34,6 +33,7 @@ import com.example.trainingproject.security.jwt.resolver.JwtTokenClaims;
 import com.example.trainingproject.security.signin.auth.SecurityUserDetails;
 import com.example.trainingproject.security.signin.exception.AbsentBearerHeaderException;
 import com.example.trainingproject.security.signin.exception.InvalidCredentialsException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("JwtAuthenticationFilter")
@@ -62,11 +62,18 @@ class JwtAuthenticationFilterTest {
     class ShouldNotFilter {
 
         @Test
-        @DisplayName("skips refresh and oauth endpoints")
-        void skipsRefreshAndOAuthEndpoints() {
+        @DisplayName("skips public auth endpoints")
+        void skipsPublicAuthEndpoints() {
             TestableJwtAuthenticationFilter filter = filter();
 
+            assertThat(filter.shouldSkip(request("/api/v1/auth/register"))).isTrue();
+            assertThat(filter.shouldSkip(request("/api/v1/auth/confirm"))).isTrue();
+            assertThat(filter.shouldSkip(request("/api/v1/auth/authenticate"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/refresh"))).isTrue();
+            assertThat(filter.shouldSkip(request("/api/v1/auth/password/forgot")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/api/v1/auth/password/change")))
+                    .isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/oauth/google"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/oauth/google/callback")))
                     .isTrue();
@@ -74,6 +81,31 @@ class JwtAuthenticationFilterTest {
             assertThat(filter.shouldSkip(request("/api/v1/auth/oauth/github/callback")))
                     .isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/products"))).isFalse();
+        }
+
+        @Test
+        @DisplayName("skips public auth endpoints when the app runs under a servlet context path")
+        void skipsPublicAuthEndpointsWithContextPath() {
+            TestableJwtAuthenticationFilter filter = filter();
+
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/register")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/confirm")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/authenticate")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/refresh")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/password/forgot")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/password/change")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/oauth/google")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/oauth/google/callback")))
+                    .isTrue();
+            assertThat(filter.shouldSkip(request("/training", "/api/v1/products")))
+                    .isFalse();
         }
     }
 
@@ -211,6 +243,13 @@ class JwtAuthenticationFilterTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setMethod("GET");
         request.setRequestURI(uri);
+        return request;
+    }
+
+    private static MockHttpServletRequest request(String contextPath, String servletPath) {
+        MockHttpServletRequest request = request(contextPath + servletPath);
+        request.setContextPath(contextPath);
+        request.setServletPath(servletPath);
         return request;
     }
 

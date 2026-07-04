@@ -116,6 +116,7 @@ class SupportChatExceptionHandlerTest {
     private static void assertProblemType(ResponseEntity<ProblemDetail> response, String expectedTypeSlug) {
         ProblemDetail problemDetail = Objects.requireNonNull(response.getBody());
 
-        assertThat(problemDetail.getType()).isEqualTo(URI.create("https://example.test/training-project/errors/" + expectedTypeSlug));
+        assertThat(problemDetail.getType())
+                .isEqualTo(URI.create("https://example.test/training-project/errors/" + expectedTypeSlug));
     }
 }

@@ -21,6 +21,8 @@ import com.example.trainingproject.security.jwt.blacklist.JwtTokenBlacklist;
 import com.example.trainingproject.security.jwt.exception.JwtTokenBlacklistedException;
 import com.example.trainingproject.security.jwt.resolver.JwtBearerTokenResolver;
 import com.example.trainingproject.security.jwt.resolver.JwtTokenClaims;
+import com.example.trainingproject.security.session.management.AuthSessionService;
+import com.example.trainingproject.security.signin.auth.SecurityUserDetails;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("JwtAuthenticationProvider Tests")
@@ -38,19 +40,32 @@ class JwtAuthenticationProviderTest {
     @Mock
     private JwtTokenBlacklist jwtTokenBlacklist;
 
+    @Mock
+    private AuthSessionService authSessionService;
+
     @Test
     @DisplayName("successfully authenticates user and attaches request details")
     void successfullyAuthenticatesUserAndAttachesRequestDetails() {
         JwtAuthenticationProvider jwtAuthenticationProvider = new JwtAuthenticationProvider(
-                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist);
+                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist, authSessionService);
         MockHttpServletRequest httpRequest = new MockHttpServletRequest();
         httpRequest.setRemoteAddr("203.0.113.10");
-        UserDetails userDetails = new User("test@example.com", "password", Collections.emptyList());
+        SecurityUserDetails userDetails = new SecurityUserDetails(
+                java.util.UUID.randomUUID(),
+                "test@example.com",
+                "password",
+                Collections.emptyList(),
+                true,
+                true,
+                true,
+                true);
         String jwtToken = "mockJwtToken";
         String userEmail = "test@example.com";
+        var sessionId = java.util.UUID.randomUUID();
 
         when(jwtBearerTokenResolver.extract(httpRequest)).thenReturn(jwtToken);
         when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
+        when(jwtTokenClaims.extractAccessTokenSessionId(jwtToken)).thenReturn(java.util.Optional.of(sessionId));
         when(userDetailsService.loadUserByUsername(userEmail)).thenReturn(userDetails);
 
         var authenticationToken = jwtAuthenticationProvider.get(httpRequest);
@@ -61,22 +76,35 @@ class JwtAuthenticationProviderTest {
         verify(jwtBearerTokenResolver).extract(httpRequest);
         verify(jwtTokenBlacklist).validateNotBlacklisted(jwtToken);
         verify(jwtTokenClaims).extractAccessTokenEmail(jwtToken);
+        verify(jwtTokenClaims).extractAccessTokenSessionId(jwtToken);
         verify(userDetailsService).loadUserByUsername(userEmail);
-        verifyNoMoreInteractions(jwtBearerTokenResolver, jwtTokenBlacklist, jwtTokenClaims, userDetailsService);
+        verify(authSessionService).validateActiveSession(sessionId, userDetails.getId());
+        verifyNoMoreInteractions(
+                jwtBearerTokenResolver, jwtTokenBlacklist, jwtTokenClaims, userDetailsService, authSessionService);
     }
 
     @Test
     @DisplayName("successfully authenticates raw authorization header")
     void successfullyAuthenticatesRawAuthorizationHeader() {
         JwtAuthenticationProvider jwtAuthenticationProvider = new JwtAuthenticationProvider(
-                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist);
-        UserDetails userDetails = new User("test@example.com", "password", Collections.emptyList());
+                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist, authSessionService);
+        SecurityUserDetails userDetails = new SecurityUserDetails(
+                java.util.UUID.randomUUID(),
+                "test@example.com",
+                "password",
+                Collections.emptyList(),
+                true,
+                true,
+                true,
+                true);
         String authorizationHeader = "Bearer mockJwtToken";
         String jwtToken = "mockJwtToken";
         String userEmail = "test@example.com";
+        var sessionId = java.util.UUID.randomUUID();
 
         when(jwtBearerTokenResolver.extract(authorizationHeader)).thenReturn(jwtToken);
         when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
+        when(jwtTokenClaims.extractAccessTokenSessionId(jwtToken)).thenReturn(java.util.Optional.of(sessionId));
         when(userDetailsService.loadUserByUsername(userEmail)).thenReturn(userDetails);
 
         var authenticationToken = jwtAuthenticationProvider.get(authorizationHeader);
@@ -87,15 +115,18 @@ class JwtAuthenticationProviderTest {
         verify(jwtBearerTokenResolver).extract(authorizationHeader);
         verify(jwtTokenBlacklist).validateNotBlacklisted(jwtToken);
         verify(jwtTokenClaims).extractAccessTokenEmail(jwtToken);
+        verify(jwtTokenClaims).extractAccessTokenSessionId(jwtToken);
         verify(userDetailsService).loadUserByUsername(userEmail);
-        verifyNoMoreInteractions(jwtBearerTokenResolver, jwtTokenBlacklist, jwtTokenClaims, userDetailsService);
+        verify(authSessionService).validateActiveSession(sessionId, userDetails.getId());
+        verifyNoMoreInteractions(
+                jwtBearerTokenResolver, jwtTokenBlacklist, jwtTokenClaims, userDetailsService, authSessionService);
     }
 
     @Test
     @DisplayName("rejects access token when loaded user account is inactive")
     void rejectsAccessTokenWhenLoadedUserAccountIsInactive() {
         JwtAuthenticationProvider jwtAuthenticationProvider = new JwtAuthenticationProvider(
-                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist);
+                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist, authSessionService);
         MockHttpServletRequest httpRequest = new MockHttpServletRequest();
         UserDetails userDetails = User.withUsername("locked@example.com")
                 .password("password")
@@ -111,5 +142,37 @@ class JwtAuthenticationProviderTest {
 
         assertThatThrownBy(() -> jwtAuthenticationProvider.get(httpRequest))
                 .isInstanceOf(JwtTokenBlacklistedException.class);
+    }
+
+    @Test
+    @DisplayName("rejects access token when session was revoked")
+    void rejectsAccessTokenWhenSessionWasRevoked() {
+        JwtAuthenticationProvider jwtAuthenticationProvider = new JwtAuthenticationProvider(
+                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist, authSessionService);
+        MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+        SecurityUserDetails userDetails = new SecurityUserDetails(
+                java.util.UUID.randomUUID(),
+                "test@example.com",
+                "password",
+                Collections.emptyList(),
+                true,
+                true,
+                true,
+                true);
+        String jwtToken = "mockJwtToken";
+        String userEmail = "test@example.com";
+        var sessionId = java.util.UUID.randomUUID();
+
+        when(jwtBearerTokenResolver.extract(httpRequest)).thenReturn(jwtToken);
+        when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
+        when(jwtTokenClaims.extractAccessTokenSessionId(jwtToken)).thenReturn(java.util.Optional.of(sessionId));
+        when(userDetailsService.loadUserByUsername(userEmail)).thenReturn(userDetails);
+        doThrow(new JwtTokenBlacklistedException("Refresh token has been revoked"))
+                .when(authSessionService)
+                .validateActiveSession(sessionId, userDetails.getId());
+
+        assertThatThrownBy(() -> jwtAuthenticationProvider.get(httpRequest))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("revoked");
     }
 }

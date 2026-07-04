@@ -4,9 +4,9 @@ import static io.restassured.RestAssured.given;
 
 import java.io.IOException;
 
+import com.example.trainingproject.common.http.ApiPaths;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.github.fge.jackson.JsonLoader;
-import com.example.trainingproject.common.http.ApiPaths;
 
 import io.restassured.http.ContentType;
 import io.restassured.response.Response;

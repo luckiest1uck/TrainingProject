@@ -12,11 +12,11 @@ import javax.crypto.SecretKey;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.security.jwt.config.JwtClaimNames;
 import com.example.trainingproject.security.jwt.config.JwtProperties;
 import com.example.trainingproject.security.jwt.config.JwtSigningKeys;
 import com.example.trainingproject.security.jwt.exception.JwtTokenException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;

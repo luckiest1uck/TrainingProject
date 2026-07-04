@@ -17,12 +17,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import com.google.api.client.googleapis.auth.oauth2.*;
-import com.google.api.client.http.GenericUrl;
-import com.google.api.client.testing.http.MockHttpTransport;
 import com.example.trainingproject.common.exception.UnauthorizedException;
 import com.example.trainingproject.security.oauth.config.GoogleOAuthProperties;
 import com.example.trainingproject.security.oauth.dto.OAuthProfile;
+import com.google.api.client.googleapis.auth.oauth2.*;
+import com.google.api.client.http.GenericUrl;
+import com.google.api.client.testing.http.MockHttpTransport;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("GoogleTokenExchanger unit tests")

@@ -14,6 +14,8 @@ import org.springframework.http.ProblemDetail;
 
 import com.example.trainingproject.common.exception.handler.ProblemDetailFactory;
 
+import io.jsonwebtoken.ExpiredJwtException;
+
 @ExtendWith(MockitoExtension.class)
 @DisplayName("JwtTokenExceptionsHandler Tests")
 class JwtTokenExceptionsHandlerTest {
@@ -51,6 +53,23 @@ class JwtTokenExceptionsHandlerTest {
                 .thenReturn(expected);
 
         ProblemDetail result = jwtTokenExceptionsHandler.handleJwtTokenBlacklistedException(exception);
+
+        assertThat(result).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("Should return UNAUTHORIZED when ExpiredJwtException is thrown")
+    void shouldReturnUnauthorizedWhenExpiredJwtExceptionThrown() {
+        ExpiredJwtException exception = new ExpiredJwtException(null, null, "token expired");
+        ProblemDetail expected = ProblemDetail.forStatus(401);
+        when(problemDetailFactory.build(
+                        "session-expired",
+                        "Session expired",
+                        HttpStatus.UNAUTHORIZED,
+                        "Session expired. Please sign in again."))
+                .thenReturn(expected);
+
+        ProblemDetail result = jwtTokenExceptionsHandler.handleExpiredJwtException(exception);
 
         assertThat(result).isEqualTo(expected);
     }

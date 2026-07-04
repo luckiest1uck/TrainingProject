@@ -21,10 +21,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
-import com.stripe.exception.AuthenticationException;
-import com.stripe.exception.StripeException;
-import com.stripe.model.checkout.Session;
-import com.stripe.param.checkout.SessionCreateParams;
 import com.example.trainingproject.cart.endpoint.CartEndpoint;
 import com.example.trainingproject.payment.entity.Payment;
 import com.example.trainingproject.payment.entity.PaymentStatus;
@@ -32,6 +28,10 @@ import com.example.trainingproject.payment.repository.PaymentRepository;
 import com.example.trainingproject.payment.service.checkout.StripeSessionGateway;
 import com.example.trainingproject.test.config.AuthenticatedUserIntegrationSupport;
 import com.example.trainingproject.user.api.UserLookupApi;
+import com.stripe.exception.AuthenticationException;
+import com.stripe.exception.StripeException;
+import com.stripe.model.checkout.Session;
+import com.stripe.param.checkout.SessionCreateParams;
 
 @DisplayName("Payment checkout integration tests")
 class PaymentCheckoutIntegrationTest extends AuthenticatedUserIntegrationSupport {

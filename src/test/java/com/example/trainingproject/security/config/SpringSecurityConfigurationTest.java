@@ -17,10 +17,10 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.correlation.CorrelationFilter;
 import com.example.trainingproject.common.exception.handler.ProblemTypeUriFactory;
 import com.example.trainingproject.security.jwt.filter.JwtAuthenticationFilter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @DisplayName("SpringSecurityConfiguration")
 class SpringSecurityConfigurationTest {

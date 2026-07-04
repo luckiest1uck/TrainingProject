@@ -7,12 +7,12 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.common.monitoring.SentryJobMonitor;
 import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
 import com.example.trainingproject.review.messaging.kafka.event.ReviewCreatedKafkaEvent;
 import com.example.trainingproject.review.service.ai.AsyncReviewProcessingService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

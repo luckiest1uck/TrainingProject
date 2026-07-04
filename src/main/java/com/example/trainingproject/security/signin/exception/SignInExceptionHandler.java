@@ -6,7 +6,10 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AccountExpiredException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -103,7 +106,13 @@ public class SignInExceptionHandler {
         return ResponseEntity.status(mapping.status()).body(pd);
     }
 
-    @ExceptionHandler({UsernameNotFoundException.class, BadCredentialsException.class})
+    @ExceptionHandler({
+        UsernameNotFoundException.class,
+        BadCredentialsException.class,
+        DisabledException.class,
+        AccountExpiredException.class,
+        CredentialsExpiredException.class
+    })
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleSpringSecurityCredentialExceptions(
             final Exception exception, HttpServletRequest request) {

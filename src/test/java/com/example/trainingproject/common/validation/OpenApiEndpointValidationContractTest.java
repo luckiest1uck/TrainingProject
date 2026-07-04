@@ -123,7 +123,8 @@ class OpenApiEndpointValidationContractTest {
     }
 
     private static boolean isGeneratedOpenApiInterface(Class<?> apiInterface) {
-        return apiInterface.isInterface() && apiInterface.getPackageName().startsWith("com.example.trainingproject.openapi.");
+        return apiInterface.isInterface()
+                && apiInterface.getPackageName().startsWith("com.example.trainingproject.openapi.");
     }
 
     private static Set<String> endpointSourceClassNames() throws Exception {

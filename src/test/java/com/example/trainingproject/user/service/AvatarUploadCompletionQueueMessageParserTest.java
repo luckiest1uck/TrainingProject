@@ -8,8 +8,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.exception.BadRequestException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @DisplayName("AvatarUploadCompletionQueueMessageParser unit tests")
 class AvatarUploadCompletionQueueMessageParserTest {

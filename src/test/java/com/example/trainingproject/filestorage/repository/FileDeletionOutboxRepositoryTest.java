@@ -21,8 +21,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.filestorage.api.dto.FileMetadataDto;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("FileDeletionOutboxRepository")

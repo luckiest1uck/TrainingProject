@@ -7,13 +7,13 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.stripe.model.Charge;
-import com.stripe.model.Event;
 import com.example.trainingproject.order.api.OrderPaymentApi;
 import com.example.trainingproject.order.api.OrderSnapshot;
 import com.example.trainingproject.order.api.OrderStatusSnapshot;
 import com.example.trainingproject.payment.entity.PaymentStatus;
 import com.example.trainingproject.payment.repository.PaymentRepository;
+import com.stripe.model.Charge;
+import com.stripe.model.Event;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

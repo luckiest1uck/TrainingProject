@@ -6,10 +6,10 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
-import com.stripe.param.checkout.SessionCreateParams;
 import com.example.trainingproject.cart.api.dto.CartItemSnapshot;
 import com.example.trainingproject.order.api.OrderSnapshot;
 import com.example.trainingproject.payment.config.StripeProperties;
+import com.stripe.param.checkout.SessionCreateParams;
 
 import lombok.RequiredArgsConstructor;
 

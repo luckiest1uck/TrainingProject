@@ -14,12 +14,12 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.stripe.model.checkout.Session;
 import com.example.trainingproject.cart.api.CartCheckoutApi;
 import com.example.trainingproject.order.api.OrderPaymentApi;
 import com.example.trainingproject.payment.entity.Payment;
 import com.example.trainingproject.payment.entity.PaymentStatus;
 import com.example.trainingproject.payment.repository.PaymentRepository;
+import com.stripe.model.checkout.Session;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("PaymentConfirmationService unit tests")

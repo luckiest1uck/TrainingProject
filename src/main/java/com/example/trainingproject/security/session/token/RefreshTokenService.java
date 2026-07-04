@@ -36,6 +36,7 @@ public class RefreshTokenService {
     public RefreshTokenResult refresh(HttpServletRequest request, AuthSessionRequestMetadata requestMetadata) {
         log.debug("auth.token.refreshing");
         String rawToken = jwtBearerTokenResolver.extract(request);
+        jwtTokenBlacklist.validateNotBlacklisted(rawToken);
         String hash = jwtTokenBlacklist.hash(rawToken);
 
         AuthSessionEntity session;
@@ -78,7 +79,6 @@ public class RefreshTokenService {
     }
 
     private String extractRefreshTokenEmail(String rawToken) {
-        jwtTokenBlacklist.validateNotBlacklisted(rawToken);
         return jwtTokenClaims.extractRefreshTokenEmail(rawToken);
     }
 }

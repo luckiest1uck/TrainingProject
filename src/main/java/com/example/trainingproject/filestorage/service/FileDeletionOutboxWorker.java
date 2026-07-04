@@ -6,7 +6,6 @@ import java.time.Instant;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.common.monitoring.SentryJobMonitor;
 import com.example.trainingproject.filestorage.api.dto.FileMetadataDto;
@@ -14,6 +13,7 @@ import com.example.trainingproject.filestorage.config.FileDeletionOutboxProperti
 import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository;
 import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository.FileDeletionOutboxRow;
 import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository.FileObjectDeletionPayload;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

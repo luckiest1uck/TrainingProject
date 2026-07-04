@@ -11,10 +11,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.example.trainingproject.review.dto.ReviewCreatedEvent;
 import com.example.trainingproject.review.messaging.kafka.event.ReviewCreatedKafkaEvent;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 @DisplayName("ReviewCreatedKafkaEvent")
 class ReviewCreatedKafkaEventTest {

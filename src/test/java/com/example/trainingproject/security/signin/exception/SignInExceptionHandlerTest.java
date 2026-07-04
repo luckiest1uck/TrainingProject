@@ -13,7 +13,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.security.authentication.AccountExpiredException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.CredentialsExpiredException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
 import com.example.trainingproject.common.exception.handler.ProblemDetailFactory;
@@ -115,6 +118,54 @@ class SignInExceptionHandlerTest {
     @DisplayName("Should return UNAUTHORIZED when BadCredentialsException is thrown")
     void shouldReturnUnauthorizedWhenBadCredentialsExceptionThrown() {
         var ex = new BadCredentialsException("Bad credentials.");
+        when(problemDetailFactory.build(
+                        "invalid-credentials",
+                        "Invalid credentials",
+                        HttpStatus.UNAUTHORIZED,
+                        "The login credentials are invalid."))
+                .thenReturn(STUB_401);
+
+        var result = handler.handleSpringSecurityCredentialExceptions(ex, request);
+
+        assertThat(result).isEqualTo(STUB_401);
+    }
+
+    @Test
+    @DisplayName("Should return UNAUTHORIZED when DisabledException is thrown")
+    void shouldReturnUnauthorizedWhenDisabledExceptionThrown() {
+        var ex = new DisabledException("Disabled");
+        when(problemDetailFactory.build(
+                        "invalid-credentials",
+                        "Invalid credentials",
+                        HttpStatus.UNAUTHORIZED,
+                        "The login credentials are invalid."))
+                .thenReturn(STUB_401);
+
+        var result = handler.handleSpringSecurityCredentialExceptions(ex, request);
+
+        assertThat(result).isEqualTo(STUB_401);
+    }
+
+    @Test
+    @DisplayName("Should return UNAUTHORIZED when AccountExpiredException is thrown")
+    void shouldReturnUnauthorizedWhenAccountExpiredExceptionThrown() {
+        var ex = new AccountExpiredException("Expired");
+        when(problemDetailFactory.build(
+                        "invalid-credentials",
+                        "Invalid credentials",
+                        HttpStatus.UNAUTHORIZED,
+                        "The login credentials are invalid."))
+                .thenReturn(STUB_401);
+
+        var result = handler.handleSpringSecurityCredentialExceptions(ex, request);
+
+        assertThat(result).isEqualTo(STUB_401);
+    }
+
+    @Test
+    @DisplayName("Should return UNAUTHORIZED when CredentialsExpiredException is thrown")
+    void shouldReturnUnauthorizedWhenCredentialsExpiredExceptionThrown() {
+        var ex = new CredentialsExpiredException("Credentials expired");
         when(problemDetailFactory.build(
                         "invalid-credentials",
                         "Invalid credentials",

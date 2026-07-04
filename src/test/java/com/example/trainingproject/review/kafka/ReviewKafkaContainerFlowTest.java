@@ -36,8 +36,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.common.monitoring.SentryJobMonitor;
 import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
@@ -46,6 +44,8 @@ import com.example.trainingproject.review.messaging.kafka.inbox.InboxEventReposi
 import com.example.trainingproject.review.messaging.kafka.inbox.ReviewCreatedKafkaConsumer;
 import com.example.trainingproject.review.messaging.kafka.outbox.OutboxEventRepository;
 import com.example.trainingproject.review.messaging.kafka.outbox.ReviewCreatedKafkaPublisher;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 
 @Testcontainers
 @DisplayName("Review Kafka container flow")

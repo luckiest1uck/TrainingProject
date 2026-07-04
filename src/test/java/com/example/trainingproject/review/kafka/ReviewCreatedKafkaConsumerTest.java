@@ -22,12 +22,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.support.Acknowledgment;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
 import com.example.trainingproject.review.messaging.kafka.event.ReviewCreatedKafkaEvent;
 import com.example.trainingproject.review.messaging.kafka.inbox.InboxEventRepository;
 import com.example.trainingproject.review.messaging.kafka.inbox.ReviewCreatedKafkaConsumer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReviewCreatedKafkaConsumer")

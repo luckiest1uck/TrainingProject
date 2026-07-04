@@ -9,9 +9,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 
+import com.example.trainingproject.ratelimit.api.RateLimitResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.example.trainingproject.ratelimit.api.RateLimitResult;
 
 import lombok.experimental.UtilityClass;
 

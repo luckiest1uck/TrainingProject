@@ -16,12 +16,12 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.example.trainingproject.common.exception.UnauthorizedException;
 import com.example.trainingproject.security.oauth.config.GitHubOAuthProperties;
 import com.example.trainingproject.security.oauth.config.OAuthProvider;
 import com.example.trainingproject.security.oauth.dto.OAuthProfile;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 @Service
 @ConditionalOnProperty(name = "github.enabled", havingValue = "true")

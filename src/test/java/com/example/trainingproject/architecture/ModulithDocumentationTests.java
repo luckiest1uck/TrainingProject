@@ -8,8 +8,8 @@ import com.example.trainingproject.TrainingProjectApplication;
 
 class ModulithDocumentationTests {
 
-    private final ApplicationModules modules =
-            ApplicationModules.of(TrainingProjectApplication.class, ApplicationModules.Filters.withoutModule("openapi"));
+    private final ApplicationModules modules = ApplicationModules.of(
+            TrainingProjectApplication.class, ApplicationModules.Filters.withoutModule("openapi"));
 
     @Test
     void writeModuleDocumentation() {

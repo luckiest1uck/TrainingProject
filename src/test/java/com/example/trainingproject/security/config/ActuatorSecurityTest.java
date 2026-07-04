@@ -36,11 +36,11 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.correlation.CorrelationFilter;
 import com.example.trainingproject.common.exception.handler.ProblemTypeUriFactory;
 import com.example.trainingproject.security.config.ActuatorSecurityTest.TestBeans;
 import com.example.trainingproject.security.jwt.filter.JwtAuthenticationFilter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @SpringJUnitWebConfig(
         classes = {

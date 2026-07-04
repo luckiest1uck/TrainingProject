@@ -12,10 +12,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.stripe.model.checkout.Session;
 import com.example.trainingproject.payment.entity.Payment;
 import com.example.trainingproject.payment.entity.PaymentStatus;
 import com.example.trainingproject.payment.service.checkout.StripeSessionGateway;
+import com.stripe.model.checkout.Session;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("PaymentReconciliationService unit tests")

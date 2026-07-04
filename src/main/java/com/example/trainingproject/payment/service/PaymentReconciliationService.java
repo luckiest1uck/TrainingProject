@@ -2,10 +2,10 @@ package com.example.trainingproject.payment.service;
 
 import org.springframework.stereotype.Service;
 
-import com.stripe.exception.StripeException;
-import com.stripe.model.checkout.Session;
 import com.example.trainingproject.payment.entity.Payment;
 import com.example.trainingproject.payment.service.checkout.StripeSessionGateway;
+import com.stripe.exception.StripeException;
+import com.stripe.model.checkout.Session;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

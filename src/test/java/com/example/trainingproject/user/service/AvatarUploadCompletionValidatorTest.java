@@ -73,7 +73,8 @@ class AvatarUploadCompletionValidatorTest {
     @Test
     @DisplayName("rejects unsupported processed content type")
     void validateRejectsUnsupportedContentType() {
-        assertThatThrownBy(() -> validator.validate(command("training-project-users", processedKey(), "image/gif", 384)))
+        assertThatThrownBy(
+                        () -> validator.validate(command("training-project-users", processedKey(), "image/gif", 384)))
                 .isInstanceOf(InvalidAvatarFileTypeException.class);
     }
 

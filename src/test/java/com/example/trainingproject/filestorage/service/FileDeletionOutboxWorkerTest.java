@@ -18,8 +18,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.common.monitoring.SentryJobMonitor;
 import com.example.trainingproject.filestorage.api.dto.FileMetadataDto;
@@ -27,6 +25,8 @@ import com.example.trainingproject.filestorage.config.FileDeletionOutboxProperti
 import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository;
 import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository.FileDeletionOutboxRow;
 import com.example.trainingproject.filestorage.repository.FileDeletionOutboxRepository.FileObjectDeletionPayload;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("FileDeletionOutboxWorker")

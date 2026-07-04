@@ -18,12 +18,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.trainingproject.common.monitoring.SentryHandledExceptionReporter;
 import com.example.trainingproject.common.monitoring.SentryJobMonitor;
 import com.example.trainingproject.review.messaging.kafka.config.KafkaIntegrationProperties;
 import com.example.trainingproject.review.messaging.kafka.event.ReviewCreatedKafkaEvent;
 import com.example.trainingproject.review.service.ai.AsyncReviewProcessingService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ReviewCreatedInboxProcessor")
@@ -100,7 +100,8 @@ class ReviewCreatedInboxProcessorTest {
 
         processor.processPendingInboxEvents();
 
-        verify(inboxEventRepository).markIgnored(rowId, "test-inbox-worker", "training-project-review-ai", "review.created");
+        verify(inboxEventRepository)
+                .markIgnored(rowId, "test-inbox-worker", "training-project-review-ai", "review.created");
     }
 
     @Test
