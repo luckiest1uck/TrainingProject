@@ -64,8 +64,8 @@ class JwtAuthenticationProviderTest {
         var sessionId = java.util.UUID.randomUUID();
 
         when(jwtBearerTokenResolver.extract(httpRequest)).thenReturn(jwtToken);
-        when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
         when(jwtTokenClaims.extractAccessTokenSessionId(jwtToken)).thenReturn(java.util.Optional.of(sessionId));
+        when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
         when(userDetailsService.loadUserByUsername(userEmail)).thenReturn(userDetails);
 
         var authenticationToken = jwtAuthenticationProvider.get(httpRequest);
@@ -75,10 +75,10 @@ class JwtAuthenticationProviderTest {
         assertThat(authenticationToken.getDetails()).isInstanceOf(WebAuthenticationDetails.class);
         verify(jwtBearerTokenResolver).extract(httpRequest);
         verify(jwtTokenBlacklist).validateNotBlacklisted(jwtToken);
-        verify(jwtTokenClaims).extractAccessTokenEmail(jwtToken);
-        verify(jwtTokenClaims).extractAccessTokenSessionId(jwtToken);
-        verify(userDetailsService).loadUserByUsername(userEmail);
         verify(authSessionService).validateActiveSession(sessionId, userDetails.getId());
+        verify(jwtTokenClaims).extractAccessTokenSessionId(jwtToken);
+        verify(jwtTokenClaims).extractAccessTokenEmail(jwtToken);
+        verify(userDetailsService).loadUserByUsername(userEmail);
         verifyNoMoreInteractions(
                 jwtBearerTokenResolver, jwtTokenBlacklist, jwtTokenClaims, userDetailsService, authSessionService);
     }
@@ -103,8 +103,8 @@ class JwtAuthenticationProviderTest {
         var sessionId = java.util.UUID.randomUUID();
 
         when(jwtBearerTokenResolver.extract(authorizationHeader)).thenReturn(jwtToken);
-        when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
         when(jwtTokenClaims.extractAccessTokenSessionId(jwtToken)).thenReturn(java.util.Optional.of(sessionId));
+        when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
         when(userDetailsService.loadUserByUsername(userEmail)).thenReturn(userDetails);
 
         var authenticationToken = jwtAuthenticationProvider.get(authorizationHeader);
@@ -114,10 +114,10 @@ class JwtAuthenticationProviderTest {
         assertThat(authenticationToken.getDetails()).isNull();
         verify(jwtBearerTokenResolver).extract(authorizationHeader);
         verify(jwtTokenBlacklist).validateNotBlacklisted(jwtToken);
-        verify(jwtTokenClaims).extractAccessTokenEmail(jwtToken);
-        verify(jwtTokenClaims).extractAccessTokenSessionId(jwtToken);
-        verify(userDetailsService).loadUserByUsername(userEmail);
         verify(authSessionService).validateActiveSession(sessionId, userDetails.getId());
+        verify(jwtTokenClaims).extractAccessTokenSessionId(jwtToken);
+        verify(jwtTokenClaims).extractAccessTokenEmail(jwtToken);
+        verify(userDetailsService).loadUserByUsername(userEmail);
         verifyNoMoreInteractions(
                 jwtBearerTokenResolver, jwtTokenBlacklist, jwtTokenClaims, userDetailsService, authSessionService);
     }
@@ -145,6 +145,50 @@ class JwtAuthenticationProviderTest {
     }
 
     @Test
+    @DisplayName("rejects access token when session id is missing")
+    void rejectsAccessTokenWhenSessionIdIsMissing() {
+        JwtAuthenticationProvider jwtAuthenticationProvider = new JwtAuthenticationProvider(
+                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist, authSessionService);
+        MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+        String jwtToken = "mockJwtToken";
+        String userEmail = "test@example.com";
+        SecurityUserDetails userDetails = new SecurityUserDetails(
+                java.util.UUID.randomUUID(), userEmail, "password", Collections.emptyList(), true, true, true, true);
+
+        when(jwtBearerTokenResolver.extract(httpRequest)).thenReturn(jwtToken);
+        when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
+        when(userDetailsService.loadUserByUsername(userEmail)).thenReturn(userDetails);
+        when(jwtTokenClaims.extractAccessTokenSessionId(jwtToken)).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> jwtAuthenticationProvider.get(httpRequest))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("session");
+
+        verifyNoInteractions(authSessionService);
+    }
+
+    @Test
+    @DisplayName("rejects access token when loaded principal does not expose owner id")
+    void rejectsAccessTokenWhenLoadedPrincipalDoesNotExposeOwnerId() {
+        JwtAuthenticationProvider jwtAuthenticationProvider = new JwtAuthenticationProvider(
+                jwtBearerTokenResolver, jwtTokenClaims, userDetailsService, jwtTokenBlacklist, authSessionService);
+        MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+        String jwtToken = "mockJwtToken";
+        String userEmail = "test@example.com";
+
+        when(jwtBearerTokenResolver.extract(httpRequest)).thenReturn(jwtToken);
+        when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
+        when(userDetailsService.loadUserByUsername(userEmail))
+                .thenReturn(new User(userEmail, "password", Collections.emptyList()));
+
+        assertThatThrownBy(() -> jwtAuthenticationProvider.get(httpRequest))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("session owner id");
+
+        verifyNoInteractions(authSessionService);
+    }
+
+    @Test
     @DisplayName("rejects access token when session was revoked")
     void rejectsAccessTokenWhenSessionWasRevoked() {
         JwtAuthenticationProvider jwtAuthenticationProvider = new JwtAuthenticationProvider(
@@ -167,7 +211,7 @@ class JwtAuthenticationProviderTest {
         when(jwtTokenClaims.extractAccessTokenEmail(jwtToken)).thenReturn(userEmail);
         when(jwtTokenClaims.extractAccessTokenSessionId(jwtToken)).thenReturn(java.util.Optional.of(sessionId));
         when(userDetailsService.loadUserByUsername(userEmail)).thenReturn(userDetails);
-        doThrow(new JwtTokenBlacklistedException("Refresh token has been revoked"))
+        doThrow(new JwtTokenBlacklistedException("Session has been revoked"))
                 .when(authSessionService)
                 .validateActiveSession(sessionId, userDetails.getId());
 

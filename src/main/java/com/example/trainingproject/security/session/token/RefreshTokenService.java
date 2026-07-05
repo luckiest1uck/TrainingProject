@@ -79,6 +79,7 @@ public class RefreshTokenService {
     }
 
     private String extractRefreshTokenEmail(String rawToken) {
+        jwtTokenBlacklist.validateNotBlacklisted(rawToken);
         return jwtTokenClaims.extractRefreshTokenEmail(rawToken);
     }
 }

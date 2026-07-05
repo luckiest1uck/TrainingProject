@@ -108,32 +108,6 @@ class AuthSessionServiceTest {
     }
 
     @Test
-    @DisplayName("revokeBySessionId revokes existing session")
-    void revokeBySessionIdRevokesSession() {
-        UUID sessionId = UUID.randomUUID();
-        AuthSessionEntity session = AuthSessionEntity.builder().id(sessionId).build();
-        when(sessionRepository.findByIdForUpdate(sessionId)).thenReturn(Optional.of(session));
-
-        service.revokeBySessionId(sessionId);
-
-        assertThat(session.getRevokedAt()).isNotNull();
-        verify(sessionRepository).save(session);
-        verify(sessionRepository).findByIdForUpdate(sessionId);
-    }
-
-    @Test
-    @DisplayName("revokeBySessionId does nothing when session not found")
-    void revokeBySessionIdNoOpWhenNotFound() {
-        UUID sessionId = UUID.randomUUID();
-        when(sessionRepository.findByIdForUpdate(sessionId)).thenReturn(Optional.empty());
-
-        service.revokeBySessionId(sessionId);
-
-        verify(sessionRepository, never()).save(any());
-        verify(sessionRepository).findByIdForUpdate(sessionId);
-    }
-
-    @Test
     @DisplayName("revokeAllForUser delegates to repository")
     void revokeAllForUserDelegatesToRepository() {
         UUID userId = UUID.randomUUID();
@@ -191,6 +165,32 @@ class AuthSessionServiceTest {
                 .thenReturn(sessions);
 
         assertThat(service.listActiveSessions(userId)).isEqualTo(sessions);
+    }
+
+    @Test
+    @DisplayName("validateActiveSession accepts an active session owned by the user")
+    void validateActiveSessionAcceptsOwnedActiveSession() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(sessionRepository.existsActiveSession(eq(sessionId), eq(userId), any(OffsetDateTime.class)))
+                .thenReturn(true);
+
+        service.validateActiveSession(sessionId, userId);
+
+        verify(sessionRepository).existsActiveSession(eq(sessionId), eq(userId), any(OffsetDateTime.class));
+    }
+
+    @Test
+    @DisplayName("validateActiveSession rejects missing revoked or foreign session")
+    void validateActiveSessionRejectsMissingRevokedOrForeignSession() {
+        UUID sessionId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(sessionRepository.existsActiveSession(eq(sessionId), eq(userId), any(OffsetDateTime.class)))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> service.validateActiveSession(sessionId, userId))
+                .isInstanceOf(JwtTokenBlacklistedException.class)
+                .hasMessageContaining("revoked");
     }
 
     @Test
@@ -262,8 +262,8 @@ class AuthSessionServiceTest {
     }
 
     @Test
-    @DisplayName("findActiveByHash rejects revoked session without revoking all user sessions")
-    void findActiveByHashRejectsRevokedSessionWithoutRevokingAll() {
+    @DisplayName("findActiveByHash marks reused revoked session as compromised and revokes all sessions")
+    void findActiveByHashMarksRevokedSessionAsCompromisedAndRevokesAll() {
         UUID userId = UUID.randomUUID();
         AuthSessionEntity revoked = AuthSessionEntity.builder()
                 .id(UUID.randomUUID())
@@ -278,9 +278,9 @@ class AuthSessionServiceTest {
                 .isInstanceOf(JwtTokenBlacklistedException.class)
                 .hasMessageContaining("revoked");
 
-        assertThat(revoked.isCompromised()).isFalse();
-        verify(sessionRepository, never()).save(revoked);
-        verify(sessionRepository, never()).markCompromisedAndRevokeAllByUserId(eq(userId), any(OffsetDateTime.class));
+        assertThat(revoked.isCompromised()).isTrue();
+        verify(sessionRepository).save(revoked);
+        verify(sessionRepository).markCompromisedAndRevokeAllByUserId(eq(userId), any(OffsetDateTime.class));
     }
 
     @Test

@@ -11,6 +11,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.MDC;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import com.example.trainingproject.common.correlation.RequestContextConstants;
@@ -40,8 +41,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
-        String uri = resolveRequestPath(request);
-        return isPublicAuthPath(uri);
+        String path = requestPath(request);
+        return ApiPaths.AUTH_AUTHENTICATE.equals(path)
+                || (ApiPaths.AUTH + "/register").equals(path)
+                || (ApiPaths.AUTH + "/confirm").equals(path)
+                || (ApiPaths.AUTH + "/password/forgot").equals(path)
+                || (ApiPaths.AUTH + "/password/change").equals(path)
+                || ApiPaths.AUTH_REFRESH.equals(path)
+                || path.startsWith(ApiPaths.AUTH_OAUTH + "/");
     }
 
     @Override
@@ -112,18 +119,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         MDC.remove(RequestContextConstants.SESSION_ID_MDC_KEY);
     }
 
-    private String resolveRequestPath(HttpServletRequest request) {
-        String servletPath = request.getServletPath();
-        return (servletPath != null && !servletPath.isBlank()) ? servletPath : request.getRequestURI();
-    }
-
-    private boolean isPublicAuthPath(String uri) {
-        return ApiPaths.AUTH_REGISTER.equals(uri)
-                || ApiPaths.AUTH_CONFIRM.equals(uri)
-                || ApiPaths.AUTH_AUTHENTICATE.equals(uri)
-                || ApiPaths.AUTH_REFRESH.equals(uri)
-                || ApiPaths.AUTH_PASSWORD_FORGOT.equals(uri)
-                || ApiPaths.AUTH_PASSWORD_CHANGE.equals(uri)
-                || uri.startsWith(ApiPaths.AUTH_OAUTH + "/");
+    private String requestPath(HttpServletRequest request) {
+        if (StringUtils.hasText(request.getServletPath())) {
+            return request.getServletPath();
+        }
+        String requestUri = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (StringUtils.hasText(contextPath) && requestUri.startsWith(contextPath)) {
+            return requestUri.substring(contextPath.length());
+        }
+        return requestUri;
     }
 }

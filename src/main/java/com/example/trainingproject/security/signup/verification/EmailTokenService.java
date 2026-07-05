@@ -40,29 +40,23 @@ public class EmailTokenService {
     public String generateEmailVerificationToken(UserRegistrationRequest request) {
         String email = EmailNormalizer.normalize(request.getEmail());
         Duration ttl = tokenTtl();
-        reserveCooldown(email, TokenPurpose.EMAIL_VERIFICATION, ttl);
-        try {
-            String encodedPassword = passwordEncoder.encode(request.getPassword());
-            var registration = new EmailRegistrationPayload(request.getFirstName(), request.getLastName(), email);
-            var payload = new EmailVerificationTokenPayload(email, registration, encodedPassword);
-            return generate(email, TokenPurpose.EMAIL_VERIFICATION, tokenPayloadProtector.protect(payload), ttl);
-        } catch (RuntimeException ex) {
-            temporaryStore.remove(cooldownKey(TokenPurpose.EMAIL_VERIFICATION, email));
-            throw ex;
-        }
+        TokenPurpose tokenPurpose = TokenPurpose.EMAIL_VERIFICATION;
+        reserveCooldown(email, tokenPurpose, ttl);
+        String encodedPassword = passwordEncoder.encode(request.getPassword());
+        var registration = new EmailRegistrationPayload(request.getFirstName(), request.getLastName(), email);
+        var payload = new EmailVerificationTokenPayload(email, registration, encodedPassword);
+        String protectedPayload = tokenPayloadProtector.protect(payload);
+        return generateWithReservedCooldown(email, tokenPurpose, protectedPayload, ttl);
     }
 
     public String generatePasswordResetToken(String email) {
         String normalizedEmail = EmailNormalizer.normalize(email);
         Duration ttl = tokenTtl();
-        reserveCooldown(normalizedEmail, TokenPurpose.PASSWORD_RESET, ttl);
-        try {
-            var payload = new PasswordResetTokenPayload(normalizedEmail);
-            return generate(normalizedEmail, TokenPurpose.PASSWORD_RESET, tokenPayloadProtector.protect(payload), ttl);
-        } catch (RuntimeException ex) {
-            temporaryStore.remove(cooldownKey(TokenPurpose.PASSWORD_RESET, normalizedEmail));
-            throw ex;
-        }
+        TokenPurpose tokenPurpose = TokenPurpose.PASSWORD_RESET;
+        reserveCooldown(normalizedEmail, tokenPurpose, ttl);
+        var payload = new PasswordResetTokenPayload(normalizedEmail);
+        String protectedPayload = tokenPayloadProtector.protect(payload);
+        return generateWithReservedCooldown(normalizedEmail, tokenPurpose, protectedPayload, ttl);
     }
 
     public EmailVerificationTokenPayload consumeEmailVerificationToken(String token) {
@@ -73,7 +67,17 @@ public class EmailTokenService {
         return consume(token, TokenPurpose.PASSWORD_RESET, PasswordResetTokenPayload.class);
     }
 
-    private String generate(String email, TokenPurpose purpose, String protectedPayload, Duration ttl) {
+    private String generateWithReservedCooldown(
+            String email, TokenPurpose purpose, String protectedPayload, Duration ttl) {
+        try {
+            return generate(purpose, protectedPayload, ttl);
+        } catch (RuntimeException ex) {
+            temporaryStore.remove(cooldownKey(purpose, email));
+            throw ex;
+        }
+    }
+
+    private String generate(TokenPurpose purpose, String protectedPayload, Duration ttl) {
         for (int attempt = 0; attempt < MAX_TOKEN_GENERATION_ATTEMPTS; attempt++) {
             String token = nextToken();
             String tokenKey = tokenKey(purpose, token);
@@ -97,14 +101,13 @@ public class EmailTokenService {
     }
 
     private void reserveCooldown(String email, TokenPurpose purpose, Duration ttl) {
+        String cooldownKey = cooldownKey(purpose, email);
         OffsetDateTime expiry = OffsetDateTime.now().plus(ttl);
-        String key = cooldownKey(purpose, email);
-        if (temporaryStore.putIfAbsent(key, expiry.toString(), ttl)) {
+        if (temporaryStore.putIfAbsent(cooldownKey, expiry.toString(), ttl)) {
             return;
         }
-
         OffsetDateTime existingExpiry =
-                temporaryStore.get(key).map(OffsetDateTime::parse).orElse(expiry);
+                temporaryStore.get(cooldownKey).map(OffsetDateTime::parse).orElse(expiry);
         throw new TimeTokenException(existingExpiry);
     }
 

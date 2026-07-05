@@ -21,8 +21,8 @@ public class SecurityRouteAuthorization {
     private static final String PRODUCT_REVIEW_LIKES_URL_PATTERN = ApiPaths.PRODUCTS + "/*/reviews/*/likes";
     private static final String PRODUCT_REVIEWS_STATISTICS_URL_PATTERN = ApiPaths.PRODUCTS + "/*/reviews/statistics";
 
-    private static final String AUTH_REGISTER_URL = ApiPaths.AUTH_REGISTER;
-    private static final String AUTH_CONFIRM_URL = ApiPaths.AUTH_CONFIRM;
+    private static final String AUTH_REGISTER_URL = ApiPaths.AUTH + "/register";
+    private static final String AUTH_CONFIRM_URL = ApiPaths.AUTH + "/confirm";
     private static final String AUTH_LOGOUT_URL = ApiPaths.AUTH + "/logout";
     private static final String AUTH_PASSWORD_FORGOT_URL = ApiPaths.AUTH + "/password/forgot";
     private static final String AUTH_PASSWORD_CHANGE_URL = ApiPaths.AUTH + "/password/change";
@@ -31,6 +31,7 @@ public class SecurityRouteAuthorization {
     private static final String AUTH_OAUTH_CALLBACK_PATTERN = ApiPaths.AUTH_OAUTH + "/*/callback";
 
     private static final String[] AUTHENTICATED_URL_PATTERNS = {
+        AUTH_LOGOUT_URL,
         ApiPaths.AUTH_SESSIONS_PATTERN,
         ApiPaths.AUTH_LOGOUT_ALL,
         ApiPaths.CART_PATTERN,
@@ -77,10 +78,7 @@ public class SecurityRouteAuthorization {
 
     private void authorizeAuthenticatedRoutes(
             AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry auth) {
-        auth.requestMatchers(AUTH_LOGOUT_URL)
-                .authenticated()
-                .requestMatchers(AUTHENTICATED_URL_PATTERNS)
-                .authenticated();
+        auth.requestMatchers(AUTHENTICATED_URL_PATTERNS).authenticated();
     }
 
     private void authorizeSupportChatRoutes(

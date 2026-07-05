@@ -10,6 +10,7 @@ import org.springframework.security.authentication.AccountExpiredException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.CredentialsExpiredException;
 import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -106,13 +107,7 @@ public class SignInExceptionHandler {
         return ResponseEntity.status(mapping.status()).body(pd);
     }
 
-    @ExceptionHandler({
-        UsernameNotFoundException.class,
-        BadCredentialsException.class,
-        DisabledException.class,
-        AccountExpiredException.class,
-        CredentialsExpiredException.class
-    })
+    @ExceptionHandler({UsernameNotFoundException.class, BadCredentialsException.class})
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleSpringSecurityCredentialExceptions(
             final Exception exception, HttpServletRequest request) {
@@ -127,5 +122,19 @@ public class SignInExceptionHandler {
                 "Invalid credentials",
                 HttpStatus.UNAUTHORIZED,
                 "The login credentials are invalid.");
+    }
+
+    @ExceptionHandler({DisabledException.class, AccountExpiredException.class, CredentialsExpiredException.class})
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public ProblemDetail handleSpringSecurityAccountStateExceptions(
+            final AuthenticationException exception, HttpServletRequest request) {
+        String logMessage = "auth.sign_in.failed: reason_code={}, status=401, method={}, path={}";
+        log.debug(
+                logMessage,
+                exception.getClass().getSimpleName(),
+                request.getMethod(),
+                RequestPathUtils.sanitize(request.getRequestURI()));
+        return problemDetailFactory.build(
+                ProblemType.AUTH_FAILED, "Authentication failed", HttpStatus.UNAUTHORIZED, "Authentication failed.");
     }
 }

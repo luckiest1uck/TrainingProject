@@ -68,10 +68,13 @@ public class AuthSessionService {
 
     @Transactional
     public void revokeBySessionId(UUID sessionId) {
-        sessionRepository.findByIdForUpdate(sessionId).ifPresent(session -> {
-            revokeSession(session);
-            log.info("auth.session.revoked: sessionId={}", maskSessionId(session.getId()));
-        });
+        sessionRepository
+                .findByIdForUpdate(sessionId)
+                .filter(this::isActiveSession)
+                .ifPresent(session -> {
+                    revokeSession(session);
+                    log.info("auth.session.revoked: sessionId={}", maskSessionId(session.getId()));
+                });
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -110,13 +113,6 @@ public class AuthSessionService {
         return listActiveSessions(userId).stream().map(this::toSessionInfo).toList();
     }
 
-    public void validateActiveSession(UUID sessionId, UUID userId) {
-        boolean active = sessionRepository.existsActiveSession(sessionId, userId, now());
-        if (!active) {
-            throw new JwtTokenBlacklistedException("Session has been revoked");
-        }
-    }
-
     @Transactional
     public AuthSessionEntity findActiveByHash(String refreshTokenHash) {
         Optional<AuthSessionEntity> currentSession =
@@ -135,6 +131,13 @@ public class AuthSessionService {
         return session;
     }
 
+    public void validateActiveSession(UUID sessionId, UUID userId) {
+        boolean active = sessionRepository.existsActiveSession(sessionId, userId, now());
+        if (!active) {
+            throw new JwtTokenBlacklistedException("Session has been revoked");
+        }
+    }
+
     private void handleReplayAttempt(AuthSessionEntity session) {
         if (isActiveSession(session)) {
             markCompromised(session);
@@ -149,13 +152,12 @@ public class AuthSessionService {
     }
 
     private void handleRevokedOrCompromisedSession(AuthSessionEntity session) {
-        if (session.isCompromised()) {
-            throw new JwtTokenBlacklistedException("Refresh token has been revoked");
+        if (!session.isCompromised()) {
+            markCompromised(session);
+            String logMessage = "auth.session.reuse_detected: sessionId={}, userId={}";
+            log.warn(logMessage, maskSessionId(session.getId()), session.getUserId());
+            revokeAllForCompromisedUser(session.getUserId());
         }
-        log.info(
-                "auth.session.reuse_rejected: sessionId={}, userId={}",
-                maskSessionId(session.getId()),
-                session.getUserId());
         throw new JwtTokenBlacklistedException("Refresh token has been revoked");
     }
 

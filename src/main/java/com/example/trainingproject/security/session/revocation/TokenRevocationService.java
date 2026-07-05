@@ -2,12 +2,11 @@ package com.example.trainingproject.security.session.revocation;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.example.trainingproject.security.jwt.blacklist.JwtTokenBlacklist;
-import com.example.trainingproject.security.jwt.config.JwtProperties;
-import com.example.trainingproject.security.jwt.exception.JwtTokenException;
 import com.example.trainingproject.security.jwt.resolver.JwtBearerTokenResolver;
 import com.example.trainingproject.security.jwt.resolver.JwtTokenClaims;
 import com.example.trainingproject.security.session.management.AuthSessionService;
@@ -23,28 +22,28 @@ public class TokenRevocationService {
 
     private final JwtTokenBlacklist jwtTokenBlacklist;
     private final JwtBearerTokenResolver jwtBearerTokenResolver;
-    private final AuthSessionService authSessionService;
     private final JwtTokenClaims jwtTokenClaims;
-    private final JwtProperties jwtProperties;
+    private final AuthSessionService authSessionService;
 
     public void revokeTokens(String refreshTokenHeader, HttpServletRequest request) {
-        if (StringUtils.hasText(refreshTokenHeader)) {
-            revokeRefreshToken(refreshTokenHeader);
-        } else {
-            revokeCurrentSession(request);
-        }
-        revokeAccessToken(request);
+        java.util.Optional<String> accessToken = resolveAccessToken(request);
+        resolveRefreshToken(refreshTokenHeader)
+                .ifPresentOrElse(this::revokeRefreshToken, () -> accessToken.ifPresent(this::revokeSessionFromAccessToken));
+        accessToken.ifPresent(this::blacklistAccessToken);
     }
 
-    private void revokeCurrentSession(HttpServletRequest request) {
+    private java.util.Optional<String> resolveRefreshToken(String refreshTokenHeader) {
+        if (StringUtils.hasText(refreshTokenHeader)) {
+            return java.util.Optional.of(refreshTokenHeader);
+        }
+        return java.util.Optional.empty();
+    }
+
+    private java.util.Optional<String> resolveAccessToken(HttpServletRequest request) {
         try {
-            String accessToken = jwtBearerTokenResolver.extract(request.getHeader(jwtProperties.header()));
-            var sessionId = jwtTokenClaims
-                    .extractAccessTokenSessionId(accessToken)
-                    .orElseThrow(() -> new JwtTokenException("Access token session is missing"));
-            authSessionService.revokeBySessionId(sessionId);
-        } catch (AbsentBearerHeaderException ex) {
-            log.debug("auth.logout.session_error: header={} reason={}", jwtProperties.header(), ex.getMessage());
+            return java.util.Optional.of(jwtBearerTokenResolver.extract(request));
+        } catch (AbsentBearerHeaderException _) {
+            return java.util.Optional.empty();
         }
     }
 
@@ -53,16 +52,17 @@ public class TokenRevocationService {
         jwtTokenBlacklist.blacklistRefreshToken(refreshToken);
     }
 
-    private void revokeAccessToken(HttpServletRequest request) {
-        String authHeader = request.getHeader(jwtProperties.header());
-        if (!StringUtils.hasText(authHeader)) {
-            return;
-        }
+    private void revokeSessionFromAccessToken(String accessToken) {
+        jwtTokenClaims
+                .extractAccessTokenSessionId(accessToken)
+                .ifPresent(authSessionService::revokeBySessionId);
+    }
 
+    private void blacklistAccessToken(String accessToken) {
         try {
-            jwtTokenBlacklist.blacklist(jwtBearerTokenResolver.extract(authHeader));
+            jwtTokenBlacklist.blacklist(accessToken);
         } catch (AbsentBearerHeaderException ex) {
-            log.debug("auth.logout.token_error: header={} reason={}", jwtProperties.header(), ex.getMessage());
+            log.debug("auth.logout.token_error: header={} reason={}", HttpHeaders.AUTHORIZATION, ex.getMessage());
         }
     }
 }

@@ -44,7 +44,7 @@ public class JwtTokenExceptionsHandler {
     @ExceptionHandler(ExpiredJwtException.class)
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
     public ProblemDetail handleExpiredJwtException(final ExpiredJwtException exception) {
-        log.debug("auth.refresh.rejected: reason=token_expired, status=401");
+        log.debug("auth.rejected: reason=token_expired, status=401");
         return problemDetailFactory.build(
                 ProblemType.SESSION_EXPIRED,
                 "Session expired",
