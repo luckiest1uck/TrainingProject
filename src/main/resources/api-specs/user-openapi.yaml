@@ -130,7 +130,7 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
               examples:
                 invalidPassword:
-                  value: { "message": "Password must be at least 8 characters long and contain at least one letter, one digit, and may include special characters @$!%*?&." }
+                  value: { "message": "Password must be at least 8 characters long and contain at least one lowercase letter, one uppercase letter, and one digit." }
         "401":
           description: "Unauthorized access or invalid old password."
           content:

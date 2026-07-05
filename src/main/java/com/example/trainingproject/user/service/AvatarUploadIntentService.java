@@ -11,6 +11,8 @@ import com.example.trainingproject.common.exception.BadRequestException;
 import com.example.trainingproject.common.turnstile.TurnstileProperties;
 import com.example.trainingproject.common.turnstile.TurnstileVerificationRequest;
 import com.example.trainingproject.common.turnstile.TurnstileVerifier;
+import com.example.trainingproject.filestorage.api.FileUrlResolverApi;
+import com.example.trainingproject.filestorage.api.dto.FileMetadataDto;
 import com.example.trainingproject.openapi.dto.AvatarUploadIntentResponse;
 import com.example.trainingproject.openapi.dto.AvatarUploadStatus;
 import com.example.trainingproject.openapi.dto.AvatarUploadStatusResponse;
@@ -36,6 +38,7 @@ public class AvatarUploadIntentService {
     private final AvatarUploadLifecycleService lifecycleService;
     private final UserAvatarUploadRepository repository;
     private final ObjectProvider<AvatarUploadPresigner> presignerProvider;
+    private final FileUrlResolverApi fileUrlResolverApi;
     private final TurnstileVerifier turnstileVerifier;
     private final TurnstileProperties turnstileProperties;
 
@@ -72,6 +75,7 @@ public class AvatarUploadIntentService {
                                 upload.getId(),
                                 status(upload),
                                 upload.getExpiresAt().atOffset(java.time.ZoneOffset.UTC))
+                        .avatarLink(readyAvatarLink(upload))
                         .failureCode(upload.getFailureCode()));
     }
 
@@ -119,5 +123,20 @@ public class AvatarUploadIntentService {
 
     private AvatarUploadStatus status(UserAvatarUpload upload) {
         return AvatarUploadStatus.fromValue(upload.getStatus().name());
+    }
+
+    private @Nullable String readyAvatarLink(UserAvatarUpload upload) {
+        if (upload.getStatus() != com.example.trainingproject.user.entity.UserAvatarUploadStatus.READY) {
+            return null;
+        }
+        if (upload.getProcessedBucket() == null
+                || upload.getProcessedBucket().isBlank()
+                || upload.getProcessedKey() == null
+                || upload.getProcessedKey().isBlank()) {
+            return null;
+        }
+        return fileUrlResolverApi
+                .findFileUrl(new FileMetadataDto(upload.getId(), upload.getProcessedBucket(), upload.getProcessedKey()))
+                .orElse(null);
     }
 }

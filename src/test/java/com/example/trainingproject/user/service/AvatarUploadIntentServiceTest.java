@@ -20,6 +20,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import com.example.trainingproject.common.exception.BadRequestException;
 import com.example.trainingproject.common.turnstile.TurnstileProperties;
 import com.example.trainingproject.common.turnstile.TurnstileVerifier;
+import com.example.trainingproject.filestorage.api.FileUrlResolverApi;
+import com.example.trainingproject.filestorage.api.dto.FileMetadataDto;
 import com.example.trainingproject.openapi.dto.AvatarUploadStatus;
 import com.example.trainingproject.openapi.dto.AvatarUploadTargetResponse;
 import com.example.trainingproject.openapi.dto.CreateAvatarUploadRequest;
@@ -48,6 +50,9 @@ class AvatarUploadIntentServiceTest {
 
     @Mock
     private AvatarUploadPresigner presigner;
+
+    @Mock
+    private FileUrlResolverApi fileUrlResolverApi;
 
     @Test
     @DisplayName("fails closed in backend mode without creating lifecycle row")
@@ -192,12 +197,46 @@ class AvatarUploadIntentServiceTest {
         assertThat(service.findUploadStatus(UUID.randomUUID(), uploadId)).isEmpty();
     }
 
+    @Test
+    @DisplayName("includes avatar link for ready upload status when processed avatar URL exists")
+    void findUploadStatusIncludesAvatarLinkForReadyUpload() {
+        UUID userId = UUID.randomUUID();
+        UUID uploadId = UUID.randomUUID();
+        var upload = UserAvatarUpload.builder()
+                .id(uploadId)
+                .userId(userId)
+                .status(UserAvatarUploadStatus.READY)
+                .contentType("image/png")
+                .originalBucket("training-project-users")
+                .originalKey("avatars/incoming/%s/%s/source".formatted(userId, uploadId))
+                .processedBucket("training-project-users")
+                .processedKey("avatars/processed/%s/%s/avatar.webp".formatted(userId, uploadId))
+                .createdAt(Instant.parse("2026-06-26T10:15:30Z"))
+                .expiresAt(Instant.parse("2026-06-26T10:20:30Z"))
+                .active(false)
+                .build();
+        AvatarUploadIntentService service = service(AvatarUploadMode.BACKEND);
+        when(repository.findById(uploadId)).thenReturn(Optional.of(upload));
+        when(fileUrlResolverApi.findFileUrl(new FileMetadataDto(
+                        uploadId,
+                        "training-project-users",
+                        "avatars/processed/%s/%s/avatar.webp".formatted(userId, uploadId))))
+                .thenReturn(Optional.of("https://cdn.example.test/avatars/%s.webp".formatted(uploadId)));
+
+        var status = service.findUploadStatus(userId, uploadId);
+
+        assertThat(status).isPresent();
+        assertThat(status.get().getAvatarLink().orElse(null))
+                .isEqualTo("https://cdn.example.test/avatars/%s.webp".formatted(uploadId));
+    }
+
     private AvatarUploadIntentService service(AvatarUploadMode mode) {
         return new AvatarUploadIntentService(
                 properties(mode),
                 lifecycleService,
                 repository,
                 presignerProvider,
+                fileUrlResolverApi,
                 turnstileVerifier,
                 new TurnstileProperties(
                         false,

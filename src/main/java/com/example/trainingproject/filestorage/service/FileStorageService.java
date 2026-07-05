@@ -88,6 +88,12 @@ public class FileStorageService implements FileStorageApi {
 
     @Override
     @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, readOnly = true)
+    public Optional<String> findFileUrl(FileMetadataDto fileMetadataDto) {
+        return objectStorage.getUrl(fileMetadataDto);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED, readOnly = true)
     public Map<UUID, String> findFileUrls(List<UUID> relatedObjectIds) {
         if (relatedObjectIds.isEmpty()) {
             return Map.of();

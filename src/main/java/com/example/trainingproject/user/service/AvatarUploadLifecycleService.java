@@ -3,6 +3,7 @@ package com.example.trainingproject.user.service;
 import java.time.Clock;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -68,7 +69,16 @@ public class AvatarUploadLifecycleService {
         var now = clock.instant();
         return repository
                 .findByUserIdAndClientIdempotencyKey(userId, idempotencyKey)
-                .map(existing -> existing.reusableAt(now) ? existing : rejectExpiredIntent(userId))
+                .map(existing -> {
+                    if (!existing.reusableAt(now)) {
+                        return rejectExpiredIntent(userId);
+                    }
+                    if (sameIntentRequest(existing, contentType, originalSizeBytes)) {
+                        return existing;
+                    }
+                    throw new BadRequestException(
+                            "Idempotency-Key cannot be reused with different avatar upload request data.");
+                })
                 .orElseGet(() -> {
                     supersedeOlderInflightUploads(userId, now);
                     return repository.save(newPendingUpload(userId, contentType, originalSizeBytes, idempotencyKey));
@@ -106,10 +116,14 @@ public class AvatarUploadLifecycleService {
         var uploads = repository.findByUserIdAndStatusIn(userId, DELETE_INVALIDATED_STATUSES);
         var now = clock.instant();
         uploads.forEach(upload -> {
+            boolean wasActive = upload.isActive();
             upload.setActive(false);
             upload.setStatus(UserAvatarUploadStatus.SUPERSEDED);
             upload.setSupersededAt(now);
             enqueueSourceObjectDeletion(upload);
+            if (!wasActive) {
+                enqueueProcessedObjectDeletion(upload);
+            }
         });
         repository.saveAll(uploads);
     }
@@ -135,6 +149,10 @@ public class AvatarUploadLifecycleService {
     }
 
     private Optional<UserAvatarUpload> cancelUpload(UserAvatarUpload upload) {
+        if (upload.isActive()) {
+            log.info("avatar.upload_cancel.ignored: reason=active_avatar, uploadId={}", upload.getId());
+            return Optional.empty();
+        }
         if (!DELETE_INVALIDATED_STATUSES.contains(upload.getStatus())) {
             log.info(
                     "avatar.upload_cancel.ignored: reason=status, uploadId={}, status={}",
@@ -147,6 +165,7 @@ public class AvatarUploadLifecycleService {
         upload.setStatus(UserAvatarUploadStatus.SUPERSEDED);
         upload.setSupersededAt(clock.instant());
         enqueueSourceObjectDeletion(upload);
+        enqueueProcessedObjectDeletion(upload);
         return Optional.of(repository.save(upload));
     }
 
@@ -165,6 +184,7 @@ public class AvatarUploadLifecycleService {
             upload.setStatus(UserAvatarUploadStatus.SUPERSEDED);
             upload.setSupersededAt(now);
             enqueueSourceObjectDeletion(upload);
+            enqueueProcessedObjectDeletion(upload);
         });
         repository.saveAll(uploadsToSupersede);
     }
@@ -265,10 +285,33 @@ public class AvatarUploadLifecycleService {
                 new FileMetadataDto(upload.getId(), upload.getOriginalBucket(), upload.getOriginalKey()));
     }
 
+    private void enqueueProcessedObjectDeletion(UserAvatarUpload upload) {
+        if (!StringUtils.hasText(upload.getProcessedBucket()) || !StringUtils.hasText(upload.getProcessedKey())) {
+            return;
+        }
+        if (upload.getProcessedBucket().equals(upload.getOriginalBucket())
+                && upload.getProcessedKey().equals(upload.getOriginalKey())) {
+            return;
+        }
+        fileStorageWriterApi.enqueueDeleteObject(
+                new FileMetadataDto(upload.getId(), upload.getProcessedBucket(), upload.getProcessedKey()));
+    }
+
     private boolean sourceMismatch(UserAvatarUpload upload, ValidAvatarUploadSourceObject source) {
         return !upload.getUserId().equals(source.userId())
                 || !upload.getOriginalBucket().equals(source.bucket())
                 || !upload.getOriginalKey().equals(source.key());
+    }
+
+    private boolean sameIntentRequest(UserAvatarUpload existing, String contentType, long originalSizeBytes) {
+        return Objects.equals(existing.getContentType(), contentType)
+                && Objects.equals(existing.getOriginalSizeBytes(), originalSizeBytes);
+    }
+
+    private UserAvatarUpload rejectExpiredIntent(UUID userId) {
+        log.info("avatar.upload_intent.expired_idempotency_retry: userId={}", userId);
+        throw new BadRequestException(
+                "Previous avatar upload intent expired. Please retry with a new Idempotency-Key.");
     }
 
     private String truncate(@Nullable String value, int maxLength) {
@@ -276,12 +319,6 @@ public class AvatarUploadLifecycleService {
             return "";
         }
         return value.length() <= maxLength ? value : value.substring(0, maxLength);
-    }
-
-    private UserAvatarUpload rejectExpiredIntent(UUID userId) {
-        log.info("avatar.upload_intent.expired_idempotency_retry: userId={}", userId);
-        throw new BadRequestException(
-                "Previous avatar upload intent expired. Please retry with a new Idempotency-Key.");
     }
 
     private UserAvatarUpload newPendingUpload(

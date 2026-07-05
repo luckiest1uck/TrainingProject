@@ -6,14 +6,14 @@ import org.springframework.util.StringUtils;
 import com.example.trainingproject.common.exception.BadRequestException;
 
 public record AvatarUploadCompletionPayload(
-        String eventType,
+        @Nullable String eventType,
         @Nullable Integer version,
-        String userId,
-        String uploadId,
-        String status,
-        String sourceBucket,
-        String sourceKey,
-        String requestedContentType,
+        @Nullable String userId,
+        @Nullable String uploadId,
+        @Nullable String status,
+        @Nullable String sourceBucket,
+        @Nullable String sourceKey,
+        @Nullable String requestedContentType,
         @Nullable String processedBucket,
         @Nullable String processedKey,
         @Nullable String contentType,
@@ -29,11 +29,15 @@ public record AvatarUploadCompletionPayload(
     static final int VERSION = 1;
 
     AvatarUploadCompletionQueueMessage toQueueMessage() {
+        String normalizedStatus = requireText(status, "status");
         AvatarUploadSourceObject sourceObject = new AvatarUploadSourceObject(
-                sourceBucket,
-                sourceKey,
-                AvatarUploadStorageLayout.sourceMetadata(userId, uploadId, requestedContentType));
-        return switch (status) {
+                requireText(sourceBucket, "sourceBucket"),
+                requireText(sourceKey, "sourceKey"),
+                AvatarUploadStorageLayout.sourceMetadata(
+                        requireText(userId, "userId"),
+                        requireText(uploadId, "uploadId"),
+                        requireText(requestedContentType, "requestedContentType")));
+        return switch (normalizedStatus) {
             case "READY" ->
                 AvatarUploadCompletionQueueMessage.ready(new AvatarUploadCompletionCommand(
                         sourceObject,

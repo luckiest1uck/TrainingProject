@@ -3,6 +3,7 @@ package com.example.trainingproject.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -23,9 +24,11 @@ class AvatarUploadCompletionPayloadTest {
 
         assertThat(message.ready()).isTrue();
         AvatarUploadCompletionCommand command = message.completionCommand();
-        assertThat(command.sourceObject().bucket()).isEqualTo("training-project-users");
-        assertThat(command.sourceObject().key()).isEqualTo(AvatarUploadStorageLayout.incomingKey(USER_ID, UPLOAD_ID));
-        assertThat(command.sourceObject().metadata())
+        AvatarUploadSourceObject sourceObject = Objects.requireNonNull(command.sourceObject());
+        assertThat(Objects.requireNonNull(sourceObject.bucket())).isEqualTo("training-project-users");
+        assertThat(Objects.requireNonNull(sourceObject.key()))
+                .isEqualTo(AvatarUploadStorageLayout.incomingKey(USER_ID, UPLOAD_ID));
+        assertThat(Objects.requireNonNull(sourceObject.metadata()))
                 .containsAllEntriesOf(AvatarUploadStorageLayout.sourceMetadata(USER_ID, UPLOAD_ID, "image/png"));
         assertThat(command.processedKey())
                 .isEqualTo(AvatarUploadStorageLayout.processedPrefix(USER_ID, UPLOAD_ID) + "avatar-384.webp");
@@ -38,7 +41,8 @@ class AvatarUploadCompletionPayloadTest {
 
         assertThat(message.ready()).isFalse();
         AvatarUploadFailureCommand command = message.failureCommand();
-        assertThat(command.sourceObject().metadata())
+        AvatarUploadSourceObject sourceObject = Objects.requireNonNull(command.sourceObject());
+        assertThat(Objects.requireNonNull(sourceObject.metadata()))
                 .containsAllEntriesOf(AvatarUploadStorageLayout.sourceMetadata(USER_ID, UPLOAD_ID, "image/png"));
         assertThat(command.failureCode()).isEqualTo("DECODE_FAILED");
         assertThat(command.failureMessage()).isEqualTo("Cannot decode image");
@@ -126,6 +130,84 @@ class AvatarUploadCompletionPayloadTest {
         assertThatThrownBy(payload::toQueueMessage)
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Avatar upload completion message failureCode is required.");
+    }
+
+    @Test
+    @DisplayName("rejects payload without user id before building source metadata")
+    void toQueueMessageRejectsMissingUserId() {
+        AvatarUploadCompletionPayload payload = new AvatarUploadCompletionPayload(
+                AvatarUploadCompletionPayload.EVENT_TYPE,
+                AvatarUploadCompletionPayload.VERSION,
+                null,
+                UPLOAD_ID.toString(),
+                "READY",
+                "training-project-users",
+                AvatarUploadStorageLayout.incomingKey(USER_ID, UPLOAD_ID),
+                "image/png",
+                "training-project-users",
+                AvatarUploadStorageLayout.processedPrefix(USER_ID, UPLOAD_ID) + "avatar-384.webp",
+                "image/webp",
+                384,
+                384,
+                2048L,
+                512L,
+                "a".repeat(64),
+                null,
+                null);
+
+        assertThatThrownBy(payload::toQueueMessage).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("rejects payload without upload id before building source metadata")
+    void toQueueMessageRejectsMissingUploadId() {
+        AvatarUploadCompletionPayload payload = new AvatarUploadCompletionPayload(
+                AvatarUploadCompletionPayload.EVENT_TYPE,
+                AvatarUploadCompletionPayload.VERSION,
+                USER_ID.toString(),
+                null,
+                "READY",
+                "training-project-users",
+                AvatarUploadStorageLayout.incomingKey(USER_ID, UPLOAD_ID),
+                "image/png",
+                "training-project-users",
+                AvatarUploadStorageLayout.processedPrefix(USER_ID, UPLOAD_ID) + "avatar-384.webp",
+                "image/webp",
+                384,
+                384,
+                2048L,
+                512L,
+                "a".repeat(64),
+                null,
+                null);
+
+        assertThatThrownBy(payload::toQueueMessage).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("rejects payload without requested content type before building source metadata")
+    void toQueueMessageRejectsMissingRequestedContentType() {
+        AvatarUploadCompletionPayload payload = new AvatarUploadCompletionPayload(
+                AvatarUploadCompletionPayload.EVENT_TYPE,
+                AvatarUploadCompletionPayload.VERSION,
+                USER_ID.toString(),
+                UPLOAD_ID.toString(),
+                "READY",
+                "training-project-users",
+                AvatarUploadStorageLayout.incomingKey(USER_ID, UPLOAD_ID),
+                null,
+                "training-project-users",
+                AvatarUploadStorageLayout.processedPrefix(USER_ID, UPLOAD_ID) + "avatar-384.webp",
+                "image/webp",
+                384,
+                384,
+                2048L,
+                512L,
+                "a".repeat(64),
+                null,
+                null);
+
+        assertThatThrownBy(payload::toQueueMessage).isInstanceOf(BadRequestException.class);
     }
 
     static AvatarUploadCompletionPayload readyPayload() {

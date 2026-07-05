@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 
 import com.example.trainingproject.common.exception.BadRequestException;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
@@ -16,7 +17,12 @@ public class AvatarUploadCompletionQueueMessageParser {
 
     public AvatarUploadCompletionQueueMessage parse(String body) {
         try {
-            AvatarUploadCompletionPayload payload = objectMapper.readValue(body, AvatarUploadCompletionPayload.class);
+            JsonNode payloadNode = objectMapper.readTree(body);
+            if (payloadNode == null || payloadNode.isNull()) {
+                throw new BadRequestException("Avatar upload completion message JSON is invalid.");
+            }
+            AvatarUploadCompletionPayload payload =
+                    objectMapper.treeToValue(payloadNode, AvatarUploadCompletionPayload.class);
             validateEnvelope(payload);
             return payload.toQueueMessage();
         } catch (JsonProcessingException ex) {

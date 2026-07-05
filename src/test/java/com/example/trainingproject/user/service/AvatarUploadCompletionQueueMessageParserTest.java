@@ -3,6 +3,7 @@ package com.example.trainingproject.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Objects;
 import java.util.UUID;
 
 import org.junit.jupiter.api.DisplayName;
@@ -28,10 +29,11 @@ class AvatarUploadCompletionQueueMessageParserTest {
 
         assertThat(message.ready()).isTrue();
         AvatarUploadCompletionCommand command = message.completionCommand();
-        assertThat(command.sourceObject().bucket()).isEqualTo("training-project-users");
-        assertThat(command.sourceObject().key())
+        AvatarUploadSourceObject sourceObject = Objects.requireNonNull(command.sourceObject());
+        assertThat(Objects.requireNonNull(sourceObject.bucket())).isEqualTo("training-project-users");
+        assertThat(Objects.requireNonNull(sourceObject.key()))
                 .isEqualTo("avatars/incoming/%s/%s/source".formatted(USER_ID, UPLOAD_ID));
-        assertThat(command.sourceObject().metadata())
+        assertThat(Objects.requireNonNull(sourceObject.metadata()))
                 .containsEntry("upload-id", UPLOAD_ID.toString())
                 .containsEntry("user-id", USER_ID.toString())
                 .containsEntry("requested-content-type", "image/png")
@@ -54,7 +56,8 @@ class AvatarUploadCompletionQueueMessageParserTest {
 
         assertThat(message.ready()).isFalse();
         AvatarUploadFailureCommand command = message.failureCommand();
-        assertThat(command.sourceObject().metadata()).containsEntry("upload-id", UPLOAD_ID.toString());
+        AvatarUploadSourceObject sourceObject = Objects.requireNonNull(command.sourceObject());
+        assertThat(Objects.requireNonNull(sourceObject.metadata())).containsEntry("upload-id", UPLOAD_ID.toString());
         assertThat(command.failureCode()).isEqualTo("DECODE_FAILED");
         assertThat(command.failureMessage()).isEqualTo("Cannot decode image");
     }
@@ -121,6 +124,38 @@ class AvatarUploadCompletionQueueMessageParserTest {
         assertThatThrownBy(() -> parser.parse("{not-json"))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Avatar upload completion message JSON is invalid.");
+    }
+
+    @Test
+    @DisplayName("rejects JSON null payload")
+    void parseRejectsJsonNullPayload() {
+        assertThatThrownBy(() -> parser.parse("null")).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("rejects payload with missing status")
+    void parseRejectsPayloadWithoutStatus() {
+        AvatarUploadCompletionPayload payload = new AvatarUploadCompletionPayload(
+                AvatarUploadCompletionPayload.EVENT_TYPE,
+                AvatarUploadCompletionPayload.VERSION,
+                USER_ID.toString(),
+                UPLOAD_ID.toString(),
+                null,
+                "training-project-users",
+                AvatarUploadStorageLayout.incomingKey(USER_ID, UPLOAD_ID),
+                "image/png",
+                "training-project-users",
+                AvatarUploadStorageLayout.processedPrefix(USER_ID, UPLOAD_ID) + "avatar-384.webp",
+                "image/webp",
+                384,
+                384,
+                2048L,
+                512L,
+                "a".repeat(64),
+                null,
+                null);
+
+        assertThatThrownBy(() -> parser.parse(writeJson(payload))).isInstanceOf(BadRequestException.class);
     }
 
     private String readyPayload() {
