@@ -28,7 +28,7 @@ import com.example.trainingproject.supportchat.exception.SupportChatRateLimitExc
 class SupportChatExceptionHandlerTest {
 
     private final SupportChatExceptionHandler handler = new SupportChatExceptionHandler(
-            new ProblemDetailFactory(new ProblemTypeUriFactory("https://example.test/training-project/errors")));
+            new ProblemDetailFactory(new ProblemTypeUriFactory("https://training-project.uk/errors")));
 
     @Test
     @DisplayName("Maps disabled support chat to 404")
@@ -117,6 +117,6 @@ class SupportChatExceptionHandlerTest {
         ProblemDetail problemDetail = Objects.requireNonNull(response.getBody());
 
         assertThat(problemDetail.getType())
-                .isEqualTo(URI.create("https://example.test/training-project/errors/" + expectedTypeSlug));
+                .isEqualTo(URI.create("https://training-project.uk/errors/" + expectedTypeSlug));
     }
 }

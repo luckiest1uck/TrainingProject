@@ -38,17 +38,6 @@ class SecurityDefaultDenyIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
-    @DisplayName("logout requires authentication by default")
-    void logoutRequiresAuthenticationByDefault() {
-        given().port(port)
-                .accept(ContentType.JSON)
-                .contentType(ContentType.JSON)
-                .post("/api/v1/auth/logout")
-                .then()
-                .statusCode(HttpStatus.UNAUTHORIZED.value());
-    }
-
-    @Test
     @DisplayName("non API paths are not public by default")
     void nonApiPathsAreDeniedByDefault() {
         given().port(port)

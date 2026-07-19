@@ -192,18 +192,17 @@ class RefreshTokenServiceTest {
         }
 
         @Test
-        @DisplayName("does not revoke other sessions when the refresh token is already blacklisted")
-        void doesNotRevokeOtherSessionsWhenRefreshTokenIsAlreadyBlacklisted() {
+        @DisplayName("rejects already-blacklisted managed refresh tokens without marking sessions compromised")
+        void rejectsAlreadyBlacklistedManagedRefreshTokensWithoutCompromiseHandling() {
             String rawToken = "managed-refresh-token";
-            JwtTokenBlacklistedException failure = new JwtTokenBlacklistedException("Refresh token has been revoked");
+            JwtTokenBlacklistedException failure = new JwtTokenBlacklistedException("Session expired");
 
             when(jwtBearerTokenResolver.extract(request)).thenReturn(rawToken);
             doThrow(failure).when(jwtTokenBlacklist).validateNotBlacklisted(rawToken);
 
             assertThatThrownBy(() -> service.refresh(request, REQUEST_METADATA)).isSameAs(failure);
 
-            verify(jwtTokenBlacklist).validateNotBlacklisted(rawToken);
-            verifyNoInteractions(userDetailsService, sessionTokenService, authSessionService);
+            verifyNoInteractions(authSessionService, userDetailsService, sessionTokenService);
         }
     }
 

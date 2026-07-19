@@ -4,15 +4,10 @@ info:
   title: "Training Project Order API"
   description: "API for managing orders, including retrieving and placing orders. Supports filtering orders by status and provides detailed order information."
   version: "2.0.0"
-  contact:
-    name: "Training Project Support"
-    email: "training@example.test"
-    url: "https://example.test/training-project"
-
 servers:
   - url: "http://localhost:8083"
     description: "Local development server"
-  - url: "https://example.test/training-project/backend"
+  - url: "https://training-project.uk/backend"
     description: "Production server"
 
 security:

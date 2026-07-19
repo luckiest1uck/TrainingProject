@@ -1,5 +1,5 @@
 # =============================================================================
-#                    TRAINING PROJECT — PROD PROFILE OVERRIDES
+#                    ICED LATTE — PROD PROFILE OVERRIDES
 # =============================================================================
 # Activated by: SPRING_PROFILES_ACTIVE=prod
 # Purpose: Hardened for production — no error leaks, no Swagger, eager bean

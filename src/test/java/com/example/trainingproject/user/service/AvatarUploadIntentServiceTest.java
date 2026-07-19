@@ -198,7 +198,7 @@ class AvatarUploadIntentServiceTest {
     }
 
     @Test
-    @DisplayName("includes avatar link for ready upload status when processed avatar URL exists")
+    @DisplayName("includes avatar link for ready upload status when current avatar URL exists")
     void findUploadStatusIncludesAvatarLinkForReadyUpload() {
         UUID userId = UUID.randomUUID();
         UUID uploadId = UUID.randomUUID();
@@ -221,13 +221,14 @@ class AvatarUploadIntentServiceTest {
                         uploadId,
                         "training-project-users",
                         "avatars/processed/%s/%s/avatar.webp".formatted(userId, uploadId))))
-                .thenReturn(Optional.of("https://cdn.example.test/avatars/%s.webp".formatted(uploadId)));
+                .thenReturn(Optional.of("https://cdn.example.com/avatar-specific.webp"));
 
-        var status = service.findUploadStatus(userId, uploadId);
+        var response = service.findUploadStatus(userId, uploadId);
 
-        assertThat(status).isPresent();
-        assertThat(status.get().getAvatarLink().orElse(null))
-                .isEqualTo("https://cdn.example.test/avatars/%s.webp".formatted(uploadId));
+        assertThat(response).isPresent();
+        assertThat(response.orElseThrow().getAvatarLink().isPresent()).isTrue();
+        assertThat(response.orElseThrow().getAvatarLink().get())
+                .isEqualTo("https://cdn.example.com/avatar-specific.webp");
     }
 
     private AvatarUploadIntentService service(AvatarUploadMode mode) {
@@ -235,8 +236,8 @@ class AvatarUploadIntentServiceTest {
                 properties(mode),
                 lifecycleService,
                 repository,
-                presignerProvider,
                 fileUrlResolverApi,
+                presignerProvider,
                 turnstileVerifier,
                 new TurnstileProperties(
                         false,

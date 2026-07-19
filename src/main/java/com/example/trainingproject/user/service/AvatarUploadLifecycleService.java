@@ -73,11 +73,11 @@ public class AvatarUploadLifecycleService {
                     if (!existing.reusableAt(now)) {
                         return rejectExpiredIntent(userId);
                     }
-                    if (sameIntentRequest(existing, contentType, originalSizeBytes)) {
-                        return existing;
+                    if (!sameIntentRequest(existing, contentType, originalSizeBytes)) {
+                        throw new BadRequestException(
+                                "Idempotency-Key cannot be reused with different avatar upload request data.");
                     }
-                    throw new BadRequestException(
-                            "Idempotency-Key cannot be reused with different avatar upload request data.");
+                    return existing;
                 })
                 .orElseGet(() -> {
                     supersedeOlderInflightUploads(userId, now);
@@ -303,6 +303,13 @@ public class AvatarUploadLifecycleService {
                 || !upload.getOriginalKey().equals(source.key());
     }
 
+    private String truncate(@Nullable String value, int maxLength) {
+        if (value == null) {
+            return "";
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
+    }
+
     private boolean sameIntentRequest(UserAvatarUpload existing, String contentType, long originalSizeBytes) {
         return Objects.equals(existing.getContentType(), contentType)
                 && Objects.equals(existing.getOriginalSizeBytes(), originalSizeBytes);
@@ -312,13 +319,6 @@ public class AvatarUploadLifecycleService {
         log.info("avatar.upload_intent.expired_idempotency_retry: userId={}", userId);
         throw new BadRequestException(
                 "Previous avatar upload intent expired. Please retry with a new Idempotency-Key.");
-    }
-
-    private String truncate(@Nullable String value, int maxLength) {
-        if (value == null) {
-            return "";
-        }
-        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
     private UserAvatarUpload newPendingUpload(

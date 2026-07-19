@@ -1,5 +1,5 @@
 # =============================================================================
-#                    TRAINING PROJECT — E2E PROFILE OVERRIDES
+#                    ICED LATTE — E2E PROFILE OVERRIDES
 # =============================================================================
 # Activated by: SPRING_PROFILES_ACTIVE=<base-profile>,e2e
 # Purpose: Keep the selected base profile's resources while disabling request

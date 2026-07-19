@@ -1,6 +1,6 @@
 --liquibase formatted sql
 
---changeset trainingproject:harden-product-catalog-constraints
+--changeset example:harden-product-catalog-constraints
 UPDATE public.product
    SET description = ''
  WHERE description IS NULL;

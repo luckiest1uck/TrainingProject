@@ -305,26 +305,8 @@ class AvatarUploadLifecycleServiceTest {
     }
 
     @Test
-    @DisplayName("ignores cancel when upload is already the active avatar")
-    void cancelUploadIgnoresActiveAvatar() {
-        UUID userId = UUID.randomUUID();
-        UUID uploadId = UUID.randomUUID();
-        UserAvatarUpload activeReady = upload(userId, uploadId, UserAvatarUploadStatus.READY);
-        activeReady.setActive(true);
-        AvatarUploadLifecycleService service = service(repository, UUID.randomUUID());
-        when(repository.findById(uploadId)).thenReturn(Optional.of(activeReady));
-
-        Optional<UserAvatarUpload> result = service.cancelUpload(userId, uploadId);
-
-        assertThat(result).isEmpty();
-        assertThat(activeReady.getStatus()).isEqualTo(UserAvatarUploadStatus.READY);
-        assertThat(activeReady.isActive()).isTrue();
-        verify(repository, never()).save(any());
-    }
-
-    @Test
-    @DisplayName("cancels inactive ready upload and deletes processed object too")
-    void cancelUploadDeletesProcessedObjectForInactiveReadyUpload() {
+    @DisplayName("cancels inactive ready upload and deletes processed avatar object")
+    void cancelUploadSupersedesInactiveReadyUploadAndDeletesProcessedObject() {
         UUID userId = UUID.randomUUID();
         UUID uploadId = UUID.randomUUID();
         UserAvatarUpload ready = upload(userId, uploadId, UserAvatarUploadStatus.READY);
@@ -338,6 +320,9 @@ class AvatarUploadLifecycleServiceTest {
 
         assertThat(result).containsSame(ready);
         assertThat(ready.getStatus()).isEqualTo(UserAvatarUploadStatus.SUPERSEDED);
+        assertThat(ready.isActive()).isFalse();
+        assertThat(ready.getSupersededAt()).isEqualTo(NOW);
+        verify(repository).save(ready);
         verify(fileStorageWriterApi).enqueueDeleteObject(sourceObjectMetadata(ready));
         verify(fileStorageWriterApi).enqueueDeleteObject(processedObjectMetadata(ready));
     }
@@ -355,6 +340,28 @@ class AvatarUploadLifecycleServiceTest {
         assertThat(result).isEmpty();
         assertThat(pending.getStatus()).isEqualTo(UserAvatarUploadStatus.PENDING_UPLOAD);
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("ignores cancel for active ready upload")
+    void cancelUploadIgnoresActiveReadyUpload() {
+        UUID userId = UUID.randomUUID();
+        UUID uploadId = UUID.randomUUID();
+        UserAvatarUpload ready = upload(userId, uploadId, UserAvatarUploadStatus.READY);
+        ready.setActive(true);
+        ready.setProcessedBucket("training-project-users");
+        ready.setProcessedKey("avatars/processed/%s/%s/avatar.webp".formatted(userId, uploadId));
+        AvatarUploadLifecycleService service = service(repository, UUID.randomUUID());
+        when(repository.findById(uploadId)).thenReturn(Optional.of(ready));
+
+        Optional<UserAvatarUpload> result = service.cancelUpload(userId, uploadId);
+
+        assertThat(result).isEmpty();
+        assertThat(ready.getStatus()).isEqualTo(UserAvatarUploadStatus.READY);
+        assertThat(ready.isActive()).isTrue();
+        assertThat(ready.getSupersededAt()).isNull();
+        verify(repository, never()).save(any());
+        verify(fileStorageWriterApi, never()).enqueueDeleteObject(any());
     }
 
     @Test
@@ -557,29 +564,30 @@ class AvatarUploadLifecycleServiceTest {
         UUID userId = UUID.randomUUID();
         UserAvatarUpload pending = upload(userId, UUID.randomUUID(), UserAvatarUploadStatus.PENDING_UPLOAD);
         UserAvatarUpload processing = upload(userId, UUID.randomUUID(), UserAvatarUploadStatus.PROCESSING);
-        UserAvatarUpload olderReady = upload(userId, UUID.randomUUID(), UserAvatarUploadStatus.READY);
-        olderReady.setProcessedBucket("training-project-users");
-        olderReady.setProcessedKey("avatars/processed/%s/%s/older-avatar.webp".formatted(userId, olderReady.getId()));
+        UserAvatarUpload inactiveReady = upload(userId, UUID.randomUUID(), UserAvatarUploadStatus.READY);
+        inactiveReady.setProcessedBucket("training-project-users");
+        inactiveReady.setProcessedKey(
+                "avatars/processed/%s/%s/inactive-avatar.webp".formatted(userId, inactiveReady.getId()));
         UserAvatarUpload ready = upload(userId, UUID.randomUUID(), UserAvatarUploadStatus.READY);
+        ready.setActive(true);
         ready.setProcessedBucket("training-project-users");
         ready.setProcessedKey("avatars/processed/%s/%s/avatar.webp".formatted(userId, ready.getId()));
-        ready.setActive(true);
         AvatarUploadLifecycleService service = service(repository, UUID.randomUUID());
         when(repository.findByUserIdAndStatusIn(eq(userId), any()))
-                .thenReturn(java.util.List.of(pending, processing, olderReady, ready));
+                .thenReturn(java.util.List.of(pending, processing, inactiveReady, ready));
 
         service.invalidateUserUploadsAfterAvatarDelete(userId);
 
-        assertThat(java.util.List.of(pending, processing, olderReady, ready)).allSatisfy(upload -> {
+        assertThat(java.util.List.of(pending, processing, inactiveReady, ready)).allSatisfy(upload -> {
             assertThat(upload.getStatus()).isEqualTo(UserAvatarUploadStatus.SUPERSEDED);
             assertThat(upload.isActive()).isFalse();
             assertThat(upload.getSupersededAt()).isEqualTo(NOW);
         });
-        verify(repository).saveAll(java.util.List.of(pending, processing, olderReady, ready));
+        verify(repository).saveAll(java.util.List.of(pending, processing, inactiveReady, ready));
         verify(fileStorageWriterApi).enqueueDeleteObject(sourceObjectMetadata(pending));
         verify(fileStorageWriterApi).enqueueDeleteObject(sourceObjectMetadata(processing));
-        verify(fileStorageWriterApi).enqueueDeleteObject(sourceObjectMetadata(olderReady));
-        verify(fileStorageWriterApi).enqueueDeleteObject(processedObjectMetadata(olderReady));
+        verify(fileStorageWriterApi).enqueueDeleteObject(sourceObjectMetadata(inactiveReady));
+        verify(fileStorageWriterApi).enqueueDeleteObject(processedObjectMetadata(inactiveReady));
         verify(fileStorageWriterApi).enqueueDeleteObject(sourceObjectMetadata(ready));
         verify(fileStorageWriterApi, never()).enqueueDeleteObject(processedObjectMetadata(ready));
     }

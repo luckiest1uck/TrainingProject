@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- changeset trainingproject:add-auth-sessions-previous-token-hash
+-- changeset example:add-auth-sessions-previous-token-hash
 ALTER TABLE auth_sessions
     ADD COLUMN IF NOT EXISTS previous_token_hash VARCHAR(128);
 

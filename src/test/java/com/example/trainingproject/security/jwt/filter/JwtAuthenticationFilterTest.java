@@ -62,50 +62,37 @@ class JwtAuthenticationFilterTest {
     class ShouldNotFilter {
 
         @Test
-        @DisplayName("skips public auth endpoints")
-        void skipsPublicAuthEndpoints() {
+        @DisplayName("skips public auth endpoints and oauth callbacks")
+        void skipsPublicAuthEndpointsAndOAuthCallbacks() {
             TestableJwtAuthenticationFilter filter = filter();
 
+            assertThat(filter.shouldSkip(request("/api/v1/auth/authenticate"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/register"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/confirm"))).isTrue();
-            assertThat(filter.shouldSkip(request("/api/v1/auth/authenticate"))).isTrue();
-            assertThat(filter.shouldSkip(request("/api/v1/auth/refresh"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/password/forgot")))
                     .isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/password/change")))
                     .isTrue();
+            assertThat(filter.shouldSkip(request("/api/v1/auth/refresh"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/oauth/google"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/oauth/google/callback")))
                     .isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/oauth/github"))).isTrue();
             assertThat(filter.shouldSkip(request("/api/v1/auth/oauth/github/callback")))
                     .isTrue();
+            assertThat(filter.shouldSkip(request("/api/v1/auth/logout"))).isFalse();
             assertThat(filter.shouldSkip(request("/api/v1/products"))).isFalse();
         }
 
         @Test
-        @DisplayName("skips public auth endpoints when the app runs under a servlet context path")
-        void skipsPublicAuthEndpointsWithContextPath() {
+        @DisplayName("uses the servlet path when the app runs under a context path")
+        void usesServletPathWhenAppRunsUnderContextPath() {
             TestableJwtAuthenticationFilter filter = filter();
+            MockHttpServletRequest request = request("/app/api/v1/auth/refresh");
+            request.setContextPath("/app");
+            request.setServletPath("/api/v1/auth/refresh");
 
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/register")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/confirm")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/authenticate")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/refresh")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/password/forgot")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/password/change")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/oauth/google")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/auth/oauth/google/callback")))
-                    .isTrue();
-            assertThat(filter.shouldSkip(request("/training", "/api/v1/products")))
-                    .isFalse();
+            assertThat(filter.shouldSkip(request)).isTrue();
         }
     }
 
@@ -243,13 +230,6 @@ class JwtAuthenticationFilterTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setMethod("GET");
         request.setRequestURI(uri);
-        return request;
-    }
-
-    private static MockHttpServletRequest request(String contextPath, String servletPath) {
-        MockHttpServletRequest request = request(contextPath + servletPath);
-        request.setContextPath(contextPath);
-        request.setServletPath(servletPath);
         return request;
     }
 

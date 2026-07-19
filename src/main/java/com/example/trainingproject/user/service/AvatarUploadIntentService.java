@@ -37,8 +37,8 @@ public class AvatarUploadIntentService {
     private final AvatarUploadProperties properties;
     private final AvatarUploadLifecycleService lifecycleService;
     private final UserAvatarUploadRepository repository;
-    private final ObjectProvider<AvatarUploadPresigner> presignerProvider;
     private final FileUrlResolverApi fileUrlResolverApi;
+    private final ObjectProvider<AvatarUploadPresigner> presignerProvider;
     private final TurnstileVerifier turnstileVerifier;
     private final TurnstileProperties turnstileProperties;
 

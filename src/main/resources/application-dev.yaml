@@ -1,5 +1,5 @@
 # =============================================================================
-#                    TRAINING PROJECT — DEV PROFILE OVERRIDES
+#                    ICED LATTE — DEV PROFILE OVERRIDES
 # =============================================================================
 # Activated by: SPRING_PROFILES_ACTIVE=dev
 # Purpose: Full developer experience — verbose errors, SQL logging, DB reseeding,

@@ -83,7 +83,7 @@ class ProductFiltersIntegrationTest extends IntegrationTestBase {
     @DisplayName("Should return bad request when brand names contain duplicates")
     void shouldReturnBadRequestWhenBrandNamesContainDuplicates() {
         given(specification)
-                .queryParam("brand_names", "BrandEpsilon", "BrandEpsilon")
+                .queryParam("brand_names", "Lavazza", "Lavazza")
                 .get()
                 .then()
                 .statusCode(HttpStatus.BAD_REQUEST.value())

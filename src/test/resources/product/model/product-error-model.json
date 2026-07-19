@@ -1,5 +1,5 @@
 {
-  "type": "https://example.test/training-project/errors/product-not-found",
+  "type": "https://training-project.uk/errors/product-not-found",
   "title": "Product not found",
   "status": 404,
   "detail": "Product not found",

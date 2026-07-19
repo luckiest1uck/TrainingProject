@@ -9,11 +9,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.authentication.AccountExpiredException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.CredentialsExpiredException;
-import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -102,42 +99,6 @@ class UserAuthenticationServiceTest {
                 .thenThrow(new LockedException("User account is locked"));
 
         assertThrows(UserAccountLockedException.class, () -> userAuthenticationService.verifyCredentials(request));
-
-        verifyNoInteractions(loginAttemptService);
-    }
-
-    @Test
-    @DisplayName("Should throw InvalidCredentialsException when user account is disabled")
-    void shouldThrowInvalidCredentialsExceptionWhenUserAccountIsDisabled() {
-        when(request.getEmail()).thenReturn("disabled@example.com");
-        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
-                .thenThrow(new DisabledException("User account is disabled"));
-
-        assertThrows(InvalidCredentialsException.class, () -> userAuthenticationService.verifyCredentials(request));
-
-        verifyNoInteractions(loginAttemptService);
-    }
-
-    @Test
-    @DisplayName("Should throw InvalidCredentialsException when user account is expired")
-    void shouldThrowInvalidCredentialsExceptionWhenUserAccountIsExpired() {
-        when(request.getEmail()).thenReturn("expired@example.com");
-        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
-                .thenThrow(new AccountExpiredException("User account is expired"));
-
-        assertThrows(InvalidCredentialsException.class, () -> userAuthenticationService.verifyCredentials(request));
-
-        verifyNoInteractions(loginAttemptService);
-    }
-
-    @Test
-    @DisplayName("Should throw InvalidCredentialsException when user credentials are expired")
-    void shouldThrowInvalidCredentialsExceptionWhenUserCredentialsAreExpired() {
-        when(request.getEmail()).thenReturn("credentials@example.com");
-        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class)))
-                .thenThrow(new CredentialsExpiredException("User credentials are expired"));
-
-        assertThrows(InvalidCredentialsException.class, () -> userAuthenticationService.verifyCredentials(request));
 
         verifyNoInteractions(loginAttemptService);
     }

@@ -1,6 +1,7 @@
 package com.example.trainingproject.security.jwt.exception;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.DisplayName;
@@ -60,7 +61,7 @@ class JwtTokenExceptionsHandlerTest {
     @Test
     @DisplayName("Should return UNAUTHORIZED when ExpiredJwtException is thrown")
     void shouldReturnUnauthorizedWhenExpiredJwtExceptionThrown() {
-        ExpiredJwtException exception = new ExpiredJwtException(null, null, "token expired");
+        ExpiredJwtException exception = mock(ExpiredJwtException.class);
         ProblemDetail expected = ProblemDetail.forStatus(401);
         when(problemDetailFactory.build(
                         "session-expired",

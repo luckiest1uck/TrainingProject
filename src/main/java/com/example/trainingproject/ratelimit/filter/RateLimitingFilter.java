@@ -99,7 +99,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         Bucket auth = properties.getAuth();
         String key = "auth:ip:" + ip;
         RateLimitCategory authPre = RateLimitCategory.AUTH_PRE;
-        if (RateLimitRouteClassifier.isStrictPreAuthPath(RateLimitRouteClassifier.resolveRequestPath(request))
+        if (RateLimitRouteClassifier.isStrictPreAuthPath(request.getRequestURI())
                 && isBlocked(request, response, key, authPre, auth, closedRateLimiter, "ip")) {
             banTracker.recordBlock(ip);
             return;

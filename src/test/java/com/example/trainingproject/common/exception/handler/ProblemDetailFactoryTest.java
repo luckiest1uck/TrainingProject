@@ -88,7 +88,7 @@ class ProblemDetailFactoryTest {
     @Test
     @DisplayName("instance URI escapes request paths safely")
     void instanceUriEscapesRequestPathsSafely() {
-        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/products/sample-drink");
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/products/iced latte");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
 
         ProblemDetail pd = factory.build("not-found", "Not Found", HttpStatus.NOT_FOUND, "missing");

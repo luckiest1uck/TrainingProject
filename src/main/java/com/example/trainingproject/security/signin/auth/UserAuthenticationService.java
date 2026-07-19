@@ -1,10 +1,7 @@
 package com.example.trainingproject.security.signin.auth;
 
-import org.springframework.security.authentication.AccountExpiredException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.CredentialsExpiredException;
-import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -70,11 +67,6 @@ public class UserAuthenticationService {
         } catch (LockedException exception) {
             log.debug("auth.failed: reason=account_locked");
             throw new UserAccountLockedException(loginAttemptProperties.lockoutDurationMinutes());
-        } catch (DisabledException | AccountExpiredException | CredentialsExpiredException exception) {
-            log.debug(
-                    "auth.failed: reason=account_status_rejected, exceptionClass={}",
-                    exception.getClass().getSimpleName());
-            throw new InvalidCredentialsException(exception);
         } catch (AuthenticationException exception) {
             log.error("auth.error: exceptionClass={}", exception.getClass().getSimpleName(), exception);
             throw exception;

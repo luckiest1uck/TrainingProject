@@ -77,7 +77,7 @@ class TurnstileVerifierTest {
         @Test
         @DisplayName("should pass when Cloudflare returns success=true")
         void passWhenVerificationSucceeds() {
-            var restClient = buildMockedRestClient("{\"success\": true, \"hostname\": \"app.example.test\"}");
+            var restClient = buildMockedRestClient("{\"success\": true, \"hostname\": \"app.training-project.uk\"}");
             var verifier = new TurnstileVerifier(TurnstileProperties.enabledForTests(), restClient);
 
             Assertions.assertThatCode(() -> verifier.verify("valid-token")).doesNotThrowAnyException();
@@ -95,7 +95,8 @@ class TurnstileVerifierTest {
                     .andExpect(
                             MockRestRequestMatchers.content().string(Matchers.containsString("remoteip=203.0.113.10")))
                     .andRespond(MockRestResponseCreators.withSuccess(
-                            "{\"success\": true, \"hostname\": \"app.example.test\"}", MediaType.APPLICATION_JSON));
+                            "{\"success\": true, \"hostname\": \"app.training-project.uk\"}",
+                            MediaType.APPLICATION_JSON));
             var verifier = new TurnstileVerifier(TurnstileProperties.enabledForTests(), builder.build());
 
             Assertions.assertThatCode(() -> verifier.verify("valid-token", "203.0.113.10"))
@@ -124,7 +125,7 @@ class TurnstileVerifierTest {
                     "test-secret",
                     Duration.ofSeconds(2),
                     Duration.ofSeconds(3),
-                    List.of("app.example.test", "localhost"));
+                    List.of("app.training-project.uk", "localhost"));
             var verifier = new TurnstileVerifier(properties, restClient);
 
             Assertions.assertThatThrownBy(() -> verifier.verify("valid-token"))
@@ -136,7 +137,7 @@ class TurnstileVerifierTest {
         @DisplayName("should reject success response with unexpected action when action validation is enabled")
         void rejectWhenActionDoesNotMatchExpectedAction() {
             var restClient = buildMockedRestClient(
-                    "{\"success\": true, \"hostname\": \"app.example.test\", \"action\": \"signup\"}");
+                    "{\"success\": true, \"hostname\": \"app.training-project.uk\", \"action\": \"signup\"}");
             var properties = new TurnstileProperties(
                     true,
                     true,
@@ -146,7 +147,7 @@ class TurnstileVerifierTest {
                     "test-secret",
                     Duration.ofSeconds(2),
                     Duration.ofSeconds(3),
-                    List.of("app.example.test"));
+                    List.of("app.training-project.uk"));
             var verifier = new TurnstileVerifier(properties, restClient);
 
             Assertions.assertThatThrownBy(
@@ -159,7 +160,7 @@ class TurnstileVerifierTest {
         @DisplayName("should allow action mismatch when action validation is disabled")
         void allowActionMismatchWhenActionValidationDisabled() {
             var restClient = buildMockedRestClient(
-                    "{\"success\": true, \"hostname\": \"app.example.test\", \"action\": \"signup\"}");
+                    "{\"success\": true, \"hostname\": \"app.training-project.uk\", \"action\": \"signup\"}");
             var properties = new TurnstileProperties(
                     true,
                     false,
@@ -169,7 +170,7 @@ class TurnstileVerifierTest {
                     "test-secret",
                     Duration.ofSeconds(2),
                     Duration.ofSeconds(3),
-                    List.of("app.example.test"));
+                    List.of("app.training-project.uk"));
             var verifier = new TurnstileVerifier(properties, restClient);
 
             Assertions.assertThatCode(
@@ -226,10 +227,11 @@ class TurnstileVerifierTest {
                     " test-secret ",
                     Duration.ofMillis(500),
                     Duration.ofSeconds(1),
-                    List.of(" app.example.test ", "localhost"));
+                    List.of(" app.training-project.uk ", "localhost"));
 
             Assertions.assertThat(properties.secretKey()).isEqualTo("test-secret");
-            Assertions.assertThat(properties.expectedHostnames()).containsExactly("app.example.test", "localhost");
+            Assertions.assertThat(properties.expectedHostnames())
+                    .containsExactly("app.training-project.uk", "localhost");
         }
 
         @Test

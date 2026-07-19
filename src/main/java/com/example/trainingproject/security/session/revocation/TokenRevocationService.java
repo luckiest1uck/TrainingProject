@@ -28,7 +28,8 @@ public class TokenRevocationService {
     public void revokeTokens(String refreshTokenHeader, HttpServletRequest request) {
         java.util.Optional<String> accessToken = resolveAccessToken(request);
         resolveRefreshToken(refreshTokenHeader)
-                .ifPresentOrElse(this::revokeRefreshToken, () -> accessToken.ifPresent(this::revokeSessionFromAccessToken));
+                .ifPresentOrElse(
+                        this::revokeRefreshToken, () -> accessToken.ifPresent(this::revokeSessionFromAccessToken));
         accessToken.ifPresent(this::blacklistAccessToken);
     }
 
@@ -53,9 +54,7 @@ public class TokenRevocationService {
     }
 
     private void revokeSessionFromAccessToken(String accessToken) {
-        jwtTokenClaims
-                .extractAccessTokenSessionId(accessToken)
-                .ifPresent(authSessionService::revokeBySessionId);
+        jwtTokenClaims.extractAccessTokenSessionId(accessToken).ifPresent(authSessionService::revokeBySessionId);
     }
 
     private void blacklistAccessToken(String accessToken) {

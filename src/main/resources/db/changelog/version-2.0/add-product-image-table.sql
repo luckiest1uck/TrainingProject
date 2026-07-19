@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- changeset trainingproject:add-product-image-table runOnChange:true
+-- changeset example:add-product-image-table runOnChange:true
 CREATE TABLE IF NOT EXISTS product_image (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id UUID NOT NULL REFERENCES product (id) ON DELETE CASCADE,

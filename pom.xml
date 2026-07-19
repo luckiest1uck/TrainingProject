@@ -17,6 +17,7 @@
     <name>Training Project</name>
     <description>Training Project is the modern online marketplace</description>
 
+
     <dependencyManagement>
         <dependencies>
             <dependency>

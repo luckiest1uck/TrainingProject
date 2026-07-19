@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- changeset trainingproject:create-support-chat-conversations
+-- changeset example:create-support-chat-conversations
 CREATE TABLE public.support_conversations
 (
     id                         UUID                     NOT NULL PRIMARY KEY,
@@ -26,7 +26,7 @@ CREATE INDEX idx_support_conversations_telegram_fallback_message
     ON public.support_conversations (telegram_fallback_message_id)
     WHERE telegram_fallback_message_id IS NOT NULL;
 
--- changeset trainingproject:create-support-chat-messages
+-- changeset example:create-support-chat-messages
 CREATE TABLE public.support_messages
 (
     id                  UUID                     NOT NULL PRIMARY KEY,

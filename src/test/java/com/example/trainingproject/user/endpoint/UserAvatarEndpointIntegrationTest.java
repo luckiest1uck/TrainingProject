@@ -207,6 +207,35 @@ class UserAvatarEndpointIntegrationTest extends AuthenticatedUserIntegrationSupp
     }
 
     @Test
+    @DisplayName("Should ignore cancellation for an active ready avatar upload")
+    void shouldIgnoreCancellationForActiveReadyAvatarUpload() {
+        AuthenticatedUser user = registerAndAuthenticateUser();
+        UUID userId = userLookupApi.getUserByEmail(user.email()).id();
+        UserAvatarUpload upload = userAvatarUploadRepository.save(upload(
+                userId,
+                UUID.randomUUID(),
+                UserAvatarUploadStatus.READY,
+                Instant.parse("2026-06-28T11:00:00Z"),
+                Instant.parse("2026-06-28T11:05:00Z")));
+        upload.setActive(true);
+        upload.setProcessedBucket("training-project-users");
+        upload.setProcessedKey("avatars/processed/%s/%s/avatar-384.webp".formatted(userId, upload.getId()));
+        upload.setProcessedAt(Instant.parse("2026-06-28T11:02:00Z"));
+        userAvatarUploadRepository.save(upload);
+
+        given(authenticatedJsonSpec(BASE_PATH, user.accessToken()))
+                .delete("/avatar/uploads/{uploadId}", upload.getId())
+                .then()
+                .statusCode(HttpStatus.NO_CONTENT.value());
+
+        assertThat(userAvatarUploadRepository.findById(upload.getId()))
+                .get()
+                .matches(saved -> saved.getStatus() == UserAvatarUploadStatus.READY)
+                .matches(UserAvatarUpload::isActive)
+                .matches(saved -> saved.getSupersededAt() == null);
+    }
+
+    @Test
     @DisplayName("Should return avatar upload status for the owning user")
     void shouldReturnAvatarUploadStatusForOwningUser() {
         AuthenticatedUser user = registerAndAuthenticateUser();

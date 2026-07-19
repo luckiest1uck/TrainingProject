@@ -88,6 +88,7 @@ public class UserAvatarEndpoint implements UserAvatarApi {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    @Override
     @DeleteMapping(path = AVATAR_UPLOADS_URL + "/{uploadId}")
     public ResponseEntity<Void> cancelAvatarUpload(@PathVariable UUID uploadId) {
         var userId = currentUserId();

@@ -7,15 +7,10 @@ info:
     Training Project uses Stripe test mode only — no real money is charged.
     Use Stripe test cards for testing (e.g., 4242 4242 4242 4242).
   version: "2.0.0"
-  contact:
-    name: "Training Project Support"
-    email: "training@example.test"
-    url: "https://example.test/training-project"
-
 servers:
   - url: "http://localhost:8083"
     description: "Local development server"
-  - url: "https://example.test/training-project/backend"
+  - url: "https://training-project.uk/backend"
     description: "Production server"
 
 security:

@@ -20,12 +20,12 @@ class RateLimitRouteClassifier {
 
     static boolean shouldSkip(HttpServletRequest request) {
         String method = request.getMethod();
-        String path = resolveRequestPath(request);
+        String path = request.getRequestURI();
         return "OPTIONS".equalsIgnoreCase(method) || isActuatorPath(path) || isDocsPath(path);
     }
 
     static RateLimitCategory classify(HttpServletRequest request) {
-        String path = resolveRequestPath(request);
+        String path = request.getRequestURI();
         String method = request.getMethod().toUpperCase(Locale.ROOT);
         return switch (path) {
             case ApiPaths.AUTH_AUTHENTICATE -> RateLimitCategory.LOGIN;
@@ -48,11 +48,6 @@ class RateLimitRouteClassifier {
 
     static boolean isStrictPreAuthPath(String path) {
         return path.equals(ApiPaths.AUTH_AUTHENTICATE) || path.equals(AUTH_REGISTER) || isPasswordResetPath(path);
-    }
-
-    static String resolveRequestPath(HttpServletRequest request) {
-        String servletPath = request.getServletPath();
-        return (servletPath != null && !servletPath.isBlank()) ? servletPath : request.getRequestURI();
     }
 
     private static boolean isActuatorPath(String path) {

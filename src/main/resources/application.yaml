@@ -1,7 +1,7 @@
 # $schema: ./application-config.schema.json
 # noinspection YAMLSchemaValidation
 # =============================================================================
-#                         TRAINING PROJECT — APPLICATION CONFIG
+#                         ICED LATTE — APPLICATION CONFIG
 # =============================================================================
 # Single-file configuration organized by concern.
 # Profile overrides: application-dev.yaml, application-prod.yaml, etc.
@@ -482,7 +482,7 @@ cache:
     #
     # TRADE-OFF: rate-limit-window-size caps how many unique IPs/users can be tracked
     # simultaneously. If exceeded, the least-recently-accessed entry is evicted and its
-    # counter resets — effectively granting a fresh rate-limit window. For the public demo hostname
+    # counter resets — effectively granting a fresh rate-limit window. For training-project.uk
     # traffic (low volume), 10 000 is more than sufficient. Increase only if you observe
     # frequent evictions in metrics (rate_limit.requests.allowed growing unexpectedly).
     rate-limit-warn-size: 1000
@@ -603,6 +603,12 @@ support-chat:
     per-ip:
       max-requests: 60
       window-duration: 1m
+
+app:
+  scheduling:
+    pool-size: ${APP_SCHEDULING_POOL_SIZE:4}
+    thread-name-prefix: ${APP_SCHEDULING_THREAD_NAME_PREFIX:training-project-scheduler-}
+    await-termination: ${APP_SCHEDULING_AWAIT_TERMINATION:PT30S}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ⑧ OBSERVABILITY (Sentry + Actuator/Metrics + Tracing)

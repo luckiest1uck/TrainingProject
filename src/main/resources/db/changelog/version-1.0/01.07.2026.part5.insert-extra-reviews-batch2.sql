@@ -37,7 +37,7 @@ INSERT INTO public.product_reviews (id, product_id, user_id, text, rating, likes
 -- Flat White (fa1e12ff)
 INSERT INTO public.product_reviews (id, product_id, user_id, text, rating, likes_count, dislikes_count) VALUES ('c1000007-0000-0000-0000-000000000001', 'fa1e12ff-67e4-42d5-bf45-c43576890f8a', '33333333-3333-3333-3333-333333333333', 'Microfoam was silky and the double ristretto base was intense. Perfection.', 5, 0, 0);
 INSERT INTO public.product_reviews (id, product_id, user_id, text, rating, likes_count, dislikes_count) VALUES ('c1000007-0000-0000-0000-000000000002', 'fa1e12ff-67e4-42d5-bf45-c43576890f8a', '66666666-6666-6666-6666-666666666666', 'Flat white was neither flat nor white. Foamy and weak. Missed the point entirely.', 1, 0, 0);
-INSERT INTO public.product_reviews (id, product_id, user_id, text, rating, likes_count, dislikes_count) VALUES ('c1000007-0000-0000-0000-000000000003', 'fa1e12ff-67e4-42d5-bf45-c43576890f8a', '77777777-7777-7777-7777-777777777777', 'Strong sample quality with just enough milk. Great balance.', 4, 0, 0);
+INSERT INTO public.product_reviews (id, product_id, user_id, text, rating, likes_count, dislikes_count) VALUES ('c1000007-0000-0000-0000-000000000003', 'fa1e12ff-67e4-42d5-bf45-c43576890f8a', '77777777-7777-7777-7777-777777777777', 'Strong coffee flavour with just enough milk. Great balance.', 4, 0, 0);
 INSERT INTO public.product_reviews (id, product_id, user_id, text, rating, likes_count, dislikes_count) VALUES ('c1000007-0000-0000-0000-000000000004', 'fa1e12ff-67e4-42d5-bf45-c43576890f8a', '88888888-8888-8888-8888-888888888888', 'Decent but I prefer a latte. The flat white felt a bit too intense for me.', 3, 0, 0);
 
 -- Iced Coffee (6d77f8a9)

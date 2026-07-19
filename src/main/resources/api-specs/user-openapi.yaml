@@ -4,15 +4,10 @@ info:
   title: "Training Project User API"
   description: "API for accessing user profiles and related operations in the TrainingProject platform."
   version: "1.0.0"
-  contact:
-    name: "Training Project Support"
-    email: "training@example.test"
-    url: "https://example.test/training-project"
-
 servers:
   - url: "https://localhost:8083"
     description: "Local development server"
-  - url: "https://example.test/training-project/backend"
+  - url: "https://training-project.uk/backend"
     description: "Production server"
 
 security:

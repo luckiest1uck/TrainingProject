@@ -1,5 +1,5 @@
 # =============================================================================
-#                    TRAINING PROJECT — TEST PROFILE OVERRIDES
+#                    ICED LATTE — TEST PROFILE OVERRIDES
 # =============================================================================
 # Activated by: tests (src/test/resources)
 # Purpose: Fast, isolated, deterministic. All external integrations disabled,
@@ -88,7 +88,7 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: training@example.test
+    username: yourtrainingprojectshop@gmail.com
     password: test_mail_password_placeholder
 
 kafka:

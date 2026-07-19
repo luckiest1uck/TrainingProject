@@ -4,15 +4,10 @@ info:
   title: "TrainingProject Product API"
   description: "API for interacting with Training Project's product catalog, including retrieving and listing products. Supports filtering, sorting, and pagination of product data."
   version: "1.0.0"
-  contact:
-    name: "Training Project Support"
-    email: "training@example.test"
-    url: "https://example.test/training-project"
-
 servers:
   - url: "http://localhost:8083"
     description: "Local development server"
-  - url: "https://example.test/training-project/backend"
+  - url: "https://training-project.uk/backend"
     description: "Production server"
 
 tags:

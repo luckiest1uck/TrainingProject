@@ -21,7 +21,7 @@ components:
           type: "string"
           format: "uri"
           description: "Stable URI identifying the error type"
-          example: "https://example.test/training-project/errors/cart-not-found"
+          example: "https://training-project.uk/errors/cart-not-found"
         title:
           type: "string"
           description: "Short human-readable label"

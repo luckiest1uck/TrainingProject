@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- changeset trainingproject:create-oauth-identities-table
+-- changeset example:create-oauth-identities-table
 CREATE TABLE IF NOT EXISTS oauth_identities
 (
     id               UUID PRIMARY KEY,

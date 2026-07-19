@@ -266,6 +266,17 @@ public class FileStorageServiceTest {
             assertThat(fileStorageService.findFileUrl(relatedObjectId)).isEmpty();
             verifyNoInteractions(objectStorage);
         }
+
+        @Test
+        @DisplayName("resolves URL directly from exact metadata")
+        void resolvesUrlDirectlyFromExactMetadata() {
+            UUID relatedObjectId = UUID.randomUUID();
+            FileMetadataDto metadata = new FileMetadataDto(relatedObjectId, "bucket", "processed/key.webp");
+            when(objectStorage.getUrl(metadata)).thenReturn(Optional.of("https://cdn.example.com/processed/key.webp"));
+
+            assertThat(fileStorageService.findFileUrl(metadata)).contains("https://cdn.example.com/processed/key.webp");
+            verifyNoInteractions(fileMetadataRepository);
+        }
     }
 
     @Test

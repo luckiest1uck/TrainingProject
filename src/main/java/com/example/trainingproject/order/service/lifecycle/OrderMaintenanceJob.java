@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.example.trainingproject.common.monitoring.SentryJobMonitor;
 import com.example.trainingproject.openapi.dto.OrderStatus;
 import com.example.trainingproject.order.entity.Order;
+import com.example.trainingproject.order.exception.InvalidOrderStateTransitionException;
 import com.example.trainingproject.order.repository.OrderRepository;
 import com.example.trainingproject.order.specification.OrderSpecifications;
 
@@ -60,8 +61,12 @@ public class OrderMaintenanceJob {
         List<Order> expired =
                 orderRepository.findAll(spec, PageRequest.of(0, batchSize)).getContent();
         for (Order order : expired) {
-            orderStatusTransitioner.expireUnpaid(order.getId(), "Unpaid order expired");
-            log.info("order.expired: orderId={}", order.getId());
+            try {
+                orderStatusTransitioner.expireUnpaid(order.getId(), "Unpaid order expired");
+                log.info("order.expired: orderId={}", order.getId());
+            } catch (InvalidOrderStateTransitionException ex) {
+                log.info("order.expiration.skipped: orderId={} reason={}", order.getId(), ex.getMessage());
+            }
         }
         if (!expired.isEmpty()) {
             log.info("order.expiration.completed: count={}", expired.size());

@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- changeset trainingproject:add-auth-sessions-table
+-- changeset example:add-auth-sessions-table
 CREATE TABLE IF NOT EXISTS auth_sessions (
     id                  UUID PRIMARY KEY,
     user_id             UUID NOT NULL REFERENCES user_details (id) ON DELETE CASCADE,

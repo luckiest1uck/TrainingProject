@@ -35,27 +35,6 @@ class LogoutEndpointIntegrationTest extends AuthenticatedUserIntegrationSupport 
     }
 
     @Test
-    @DisplayName("Should revoke the current session even when X-Refresh-Token is omitted")
-    void shouldRevokeCurrentSessionWithoutRefreshHeader() {
-        AuthenticatedUser user = registerAndAuthenticateUser();
-
-        given(authenticatedJsonSpec(AUTH_BASE_PATH, user.accessToken()))
-                .post("/logout")
-                .then()
-                .statusCode(HttpStatus.OK.value());
-
-        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + user.refreshToken()))
-                .post("/refresh")
-                .then()
-                .statusCode(HttpStatus.UNAUTHORIZED.value());
-
-        given(authenticatedJsonSpec(AUTH_BASE_PATH, user.accessToken()))
-                .get("/sessions")
-                .then()
-                .statusCode(HttpStatus.UNAUTHORIZED.value());
-    }
-
-    @Test
     @DisplayName("Should revoke all active sessions on logout-all")
     void shouldRevokeAllActiveSessionsOnLogoutAll() {
         AuthenticatedUser firstSession = registerAndAuthenticateUser();
@@ -83,49 +62,9 @@ class LogoutEndpointIntegrationTest extends AuthenticatedUserIntegrationSupport 
     }
 
     @Test
-    @DisplayName("Retrying a logged-out refresh token does not revoke the user's other active sessions")
-    void loggedOutRefreshRetryDoesNotRevokeOtherSessions() {
-        AuthenticatedUser firstSession = registerAndAuthenticateUser();
-        AuthenticatedUser secondSession = authenticate(firstSession.email(), firstSession.password());
-
-        given(authenticatedJsonSpec(AUTH_BASE_PATH, firstSession.accessToken())
-                        .header("X-Refresh-Token", firstSession.refreshToken()))
-                .post("/logout")
-                .then()
-                .statusCode(HttpStatus.OK.value());
-
-        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + firstSession.refreshToken()))
-                .post("/refresh")
-                .then()
-                .statusCode(HttpStatus.UNAUTHORIZED.value());
-
-        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + secondSession.refreshToken()))
-                .post("/refresh")
-                .then()
-                .statusCode(HttpStatus.OK.value());
-    }
-
-    @Test
-    @DisplayName(
-            "Retrying a logged-out refresh token without X-Refresh-Token logout does not revoke the user's other active sessions")
-    void loggedOutRefreshRetryWithoutRefreshHeaderDoesNotRevokeOtherSessions() {
-        AuthenticatedUser firstSession = registerAndAuthenticateUser();
-        AuthenticatedUser secondSession = authenticate(firstSession.email(), firstSession.password());
-
-        given(authenticatedJsonSpec(AUTH_BASE_PATH, firstSession.accessToken()))
-                .post("/logout")
-                .then()
-                .statusCode(HttpStatus.OK.value());
-
-        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + firstSession.refreshToken()))
-                .post("/refresh")
-                .then()
-                .statusCode(HttpStatus.UNAUTHORIZED.value());
-
-        given(jsonSpec(AUTH_BASE_PATH).header("Authorization", "Bearer " + secondSession.refreshToken()))
-                .post("/refresh")
-                .then()
-                .statusCode(HttpStatus.OK.value());
+    @DisplayName("Should reject anonymous logout")
+    void shouldRejectAnonymousLogout() {
+        given(jsonSpec(AUTH_BASE_PATH)).post("/logout").then().statusCode(HttpStatus.UNAUTHORIZED.value());
     }
 
     private AuthenticatedUser authenticate(String email, String password) {

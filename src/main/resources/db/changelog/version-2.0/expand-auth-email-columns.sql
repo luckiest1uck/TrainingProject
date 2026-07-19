@@ -1,6 +1,6 @@
 -- liquibase formatted sql
 
--- changeset trainingproject:expand-auth-email-columns
+-- changeset example:expand-auth-email-columns
 ALTER TABLE user_details
     ALTER COLUMN email TYPE VARCHAR(254);
 

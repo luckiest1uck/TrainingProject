@@ -70,8 +70,8 @@ public class FileStorageService implements FileStorageApi {
     @Override
     @Transactional(propagation = Propagation.REQUIRED, isolation = Isolation.READ_COMMITTED)
     public void enqueueDeleteObject(FileMetadataDto fileMetadataDto) {
-        fileDeletionOutboxRepository.insertDeleteObjectEvent(
-                fileMetadataDto, fileDeletionOutboxProperties.maxAttempts());
+        int maxAttempts = fileDeletionOutboxProperties.maxAttempts();
+        fileDeletionOutboxRepository.insertDeleteObjectEvent(fileMetadataDto, maxAttempts);
     }
 
     @Override
